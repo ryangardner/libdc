@@ -122,6 +122,8 @@ typedef enum dc_family_t {
 	DC_FAMILY_DEEPBLU = (101 << 16),
 	/* Oceans S1 */
 	DC_FAMILY_OCEANS_S1 = (102 << 16),
+    /* Deep6 */
+    DC_FAMILY_DEEP6 = (103 << 16),
 } dc_family_t;
 
 #ifdef __cplusplus
