@@ -139,7 +139,7 @@ deepsix_send_cmd(deepsix_device_t *device, const unsigned char cmd, const unsign
         return DC_STATUS_INVALIDARGS;
 
     // Calculate packet csum
-    csum = cmd + sub_command + endian_bit
+    csum = cmd + sub_command + endian_bit;
     for (i = 0; i < size; i++)
         csum += data[i];
     csum = csum ^ 255;
@@ -228,7 +228,7 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, unsign
     char buffer[8+2*MAX_DATA];
     int cmd, csum, ndata;
 
-    status = deepsix_recv_line(device, buffer, sizeof(buffer));
+    status = deepsix_recv_data(device, buffer, sizeof(buffer));
     if (status != DC_STATUS_SUCCESS)
         return status;
 
