@@ -92,19 +92,24 @@ static const dc_device_vtable_t deepsix_device_vtable = {
         deepsix_device_close, /* close */
 };
 
-// Maximum data in a packet. It's actually much
-// less than this, since BLE packets are small and
-// with the 7 bytes of headers and final newline
-// and the HEX encoding, the actual maximum is
-// just something like 6 bytes.
+
+
+
+// Maximum data in a command sentence (in bytes)
 //
-// But in theory the data could be done over
-// multiple packets. That doesn't seem to be
-// the case in anything I've seen so far.
+// This is to make it simpler to build up the buffer
+// to create and receive the command
+// or reply
 //
-// Pick something small and easy to use for
-// stack buffers.
-#define MAX_DATA 20
+#define MAX_DATA 160
+typedef struct deepsix_command_sentence {
+    unsigned char cmd;
+    unsigned char sub_command;
+    unsigned char byte_order;
+    unsigned char data_len;
+    unsigned char data[MAX_DATA];
+} deepsix_command_sentence;
+
 
 static char *
 write_hex_byte(unsigned char data, char *p)
@@ -118,40 +123,31 @@ write_hex_byte(unsigned char data, char *p)
 //
 // Send a cmd packet.
 //
-// The format of the cmd on the "wire" is:
-//  - byte '#'
-//  - HEX char of cmd
-//  - HEX char two's complement modular sum of packet data (including cmd/size)
-//  - HEX char size of data as encoded in HEX
-//  - n * HEX char data
-//  - byte '\n'
-// so you end up having 8 bytes of header/trailer overhead, and two bytes
-// for every byte of data sent due to the HEX encoding.
 //
 static dc_status_t
-deepsix_send_cmd(deepsix_device_t *device, const unsigned char cmd, const unsigned char sub_command, const unsigned char data[], size_t size)
+deepsix_send_cmd(deepsix_device_t *device, const deepsix_command_sentence cmd_sentence)
 {
-    char buffer[8+2*MAX_DATA], *p;
+    char buffer[MAX_DATA], *p;
     unsigned char csum;
     int i;
 
-    if (size > MAX_DATA)
+    if (cmd_sentence.data_len > MAX_DATA)
         return DC_STATUS_INVALIDARGS;
 
     // Calculate packet csum
-    csum = cmd + sub_command + endian_bit;
-    for (i = 0; i < size; i++)
-        csum += data[i];
+    csum = cmd_sentence.cmd + cmd_sentence.sub_command + cmd_sentence.byte_order;
+    for (i = 0; i < cmd_sentence.data_len; i++)
+        csum += cmd_sentence.data[i];
     csum = csum ^ 255;
 
     // Fill the data buffer
     p = buffer;
-    *p++ = cmd;
-    *p++ = sub_command;
-    *p++ = endian_bit;
-    *p++ = size;
-    for (i = 0; i < size; i++)
-        *p++ = data[i];
+    *p++ = cmd_sentence.cmd;
+    *p++ = cmd_sentence.sub_command;
+    *p++ = cmd_sentence.byte_order;
+    *p++ = cmd_sentence.data_len;
+    for (i = 0; i < cmd_sentence.data_len; i++)
+        *p++ = cmd_sentence.data[i];
     *p++ = csum;
 
     // .. and send it out
@@ -289,18 +285,16 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
 // Common communication pattern: send a command, expect data back with the same
 // command byte.
 static dc_status_t
-deepsix_send_recv(deepsix_device_t *device, const unsigned char cmd,
-                  const unsigned char sub_cmd,
-                  const unsigned char *data, size_t data_size,
+deepsix_send_recv(deepsix_device_t *device, struct deepsix_command_sentence cmd_sentence,
                   unsigned char *result, size_t result_size)
 {
     dc_status_t status;
     size_t got;
 
-    status = deepsix_send_cmd(device, cmd, sub_cmd, data, data_size);
+    status = deepsix_send_cmd(device, cmd_sentence);
     if (status != DC_STATUS_SUCCESS)
         return status;
-    status = deepsix_recv_data(device, cmd+1, sub_cmd, result, result_size, &got);
+    status = deepsix_recv_data(device, cmd_sentence.cmd+1, cmd_sentence.sub_command, result, result_size, &got);
     if (status != DC_STATUS_SUCCESS)
         return status;
     if (got != result_size) {
@@ -425,20 +419,22 @@ deepsix_download_dive(deepsix_device_t *device, unsigned char nr, dc_dive_callba
     char header[256];
     unsigned char *profile;
 // todo - something here
-    status = deepsix_send_recv(device,  CMD_GETDIVE, 00, &nr, 1, &header_len, 1);
+    status = DC_STATUS_UNSUPPORTED;
+//    status = deepsix_send_recv(device,  CMD_GETDIVE, 00, &nr, 1, &header_len, 1);
     if (status != DC_STATUS_SUCCESS)
         return status;
-    status = deepsix_recv_bulk(device, RSP_DIVESTAT, 00, header, header_len);
-    if (status != DC_STATUS_SUCCESS)
-        return status;
-    memset(header + header_len, 0, 256 - header_len);
+//    status = deepsix_recv_bulk(device, RSP_DIVESTAT, 00, header, header_len);
+//    if (status != DC_STATUS_SUCCESS)
+//        return status;
+//    memset(header + header_len, 0, 256 - header_len);
 
     /* The header is the fingerprint. If we've already seen this header, we're done */
     if (memcmp(header, device->fingerprint, sizeof (device->fingerprint)) == 0)
         return DC_STATUS_DONE;
 
     // todo - add actual commands
-    status = deepsix_send_recv(device,  CMD_GETPROFILE, 0, &nr, 1, profilebytes, sizeof(profilebytes));
+//    status = deepsix_send_recv(device,  CMD_GETPROFILE, 0, &nr, 1, profilebytes, sizeof(profilebytes));
+    status = DC_STATUS_UNSUPPORTED;
     if (status != DC_STATUS_SUCCESS)
         return status;
     profile_len = (profilebytes[0] << 8) | profilebytes[1];
@@ -474,8 +470,17 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     dc_status_t status;
     int i;
 
-    val = 0;
-    status = deepsix_send_recv(device,  CMD_GROUP_LOGS, 0x02, &val, 1, &nrdives, 1);
+    uint16_t dive_number = 1;
+    deepsix_command_sentence sentence;
+    sentence.cmd = CMD_GROUP_LOGS;
+    sentence.sub_command = 0x02;
+    sentence.byte_order = endian_bit;
+    sentence.data_len = 2;
+    // put the dive number into the data
+    memcpy(sentence.data, &dive_number, 2);
+
+
+    status = deepsix_send_recv(device, sentence, &nrdives, 1);
     if (status != DC_STATUS_SUCCESS)
         return status;
 
