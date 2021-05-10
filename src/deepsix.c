@@ -470,7 +470,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     dc_status_t status;
     int i;
 
-    uint16_t dive_number = 1;
+    u_int16_t dive_number = 1;
     deepsix_command_sentence sentence;
     sentence.cmd = CMD_GROUP_LOGS;
     sentence.sub_command = 0x02;
