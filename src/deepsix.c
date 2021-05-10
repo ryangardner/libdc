@@ -37,6 +37,11 @@
 #define CMD_GROUP_LOGS     0xC0 // get the logs
 #define CMD_GROUP_LOGS_ACK 0xC1 // incremented by one when acked
 
+#define CMD_GROUP_INFO                   0xA0 // info command group
+#define COMMAND_INFO_LAST_DIVE_LOG_INDEX 0x04 // get the index of the last dive
+#define COMMAND_INFO_SERIAL_NUMBER       0x03 // get the serial number
+#define SERIAL_NUMBER_LENGTH             12 // the length of the serial number
+
 
 #define CMD_GETDIVENR	0x40	// Send empty byte, get single-byte number of dives back
 #define CMD_GETDIVE	0x41	// Send dive number (1-nr) byte, get dive stat length byte back
@@ -475,15 +480,14 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
 
     u_int16_t dive_number = 1;
     deepsix_command_sentence sentence;
-    sentence.cmd = CMD_GROUP_LOGS;
-    sentence.sub_command = 0x02;
+    sentence.cmd = CMD_GROUP_INFO;
+    sentence.sub_command = COMMAND_INFO_LAST_DIVE_LOG_INDEX;
     sentence.byte_order = endian_bit;
-    sentence.data_len = 2;
-    // put the dive number into the data
-    memcpy(sentence.data, &dive_number, 2);
+//    sentence.data_len = 2;
+//    // put the dive number into the data
+//    memcpy(sentence.data, &dive_number, 2);
 
-
-    status = deepsix_send_recv(device, sentence, &nrdives, 1);
+    status = deepsix_send_recv(device, sentence, &dive_number, 2);
     if (status != DC_STATUS_SUCCESS)
         return status;
 
