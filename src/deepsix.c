@@ -244,7 +244,7 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
         return DC_STATUS_IO;
     }
 
-    cmd = read_hex_byte(buffer+1);
+    cmd = buffer+1;
     csum = read_hex_byte(buffer+3);
     ndata = read_hex_byte(buffer+5);
     if ((cmd | csum | ndata) < 0) {
@@ -475,7 +475,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     int i;
 
     val = 0;
-    status = deepsix_send_recv(device,  CMD_GETDIVENR, 0, &val, 1, &nrdives, 1);
+    status = deepsix_send_recv(device,  CMD_GROUP_LOGS, 0x02, &val, 1, &nrdives, 1);
     if (status != DC_STATUS_SUCCESS)
         return status;
 
