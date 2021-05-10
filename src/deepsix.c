@@ -34,6 +34,10 @@
 #define CMD_23		0x23	// Send 00/01 byte, get ack back? Some metric/imperial setting?
 
 // "Read dives"?
+#define CMD_GROUP_LOGS     0xC0 // get the logs
+#define CMD_GROUP_LOGS_ACK 0xC1 // incremented by one when acked
+
+
 #define CMD_GETDIVENR	0x40	// Send empty byte, get single-byte number of dives back
 #define CMD_GETDIVE	0x41	// Send dive number (1-nr) byte, get dive stat length byte back
 #define RSP_DIVESTAT	0x42	//  .. followed by packets of dive stat for that dive of that length
@@ -68,6 +72,8 @@ typedef struct deepsix_device_t {
     dc_iostream_t *iostream;
     unsigned char fingerprint[EXCURSION_HDR_SIZE];
 } deepsix_device_t;
+
+static const unsigned char endian_bit = 0x01;
 
 static dc_status_t deepsix_device_set_fingerprint (dc_device_t *abstract, const unsigned char data[], unsigned int size);
 static dc_status_t deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void *userdata);
@@ -123,7 +129,7 @@ write_hex_byte(unsigned char data, char *p)
 // for every byte of data sent due to the HEX encoding.
 //
 static dc_status_t
-deepsix_send_cmd(deepsix_device_t *device, const unsigned char cmd, const unsigned char data[], size_t size)
+deepsix_send_cmd(deepsix_device_t *device, const unsigned char cmd, const unsigned char sub_command, const unsigned char data[], size_t size)
 {
     char buffer[8+2*MAX_DATA], *p;
     unsigned char csum;
@@ -133,20 +139,20 @@ deepsix_send_cmd(deepsix_device_t *device, const unsigned char cmd, const unsign
         return DC_STATUS_INVALIDARGS;
 
     // Calculate packet csum
-    csum = cmd + 2*size;
+    csum = cmd + sub_command + endian_bit
     for (i = 0; i < size; i++)
         csum += data[i];
-    csum = -csum;
+    csum = csum ^ 255;
 
     // Fill the data buffer
     p = buffer;
-    *p++ = '#';
-    p = write_hex_byte(cmd, p);
-    p = write_hex_byte(csum, p);
-    p = write_hex_byte(size*2, p);
+    *p++ = cmd;
+    *p++ = sub_command;
+    *p++ = endian_bit;
+    *p++ = size;
     for (i = 0; i < size; i++)
-        p = write_hex_byte(data[i], p);
-    *p++ = '\n';
+        *p++ = data[i];
+    *p++ = csum;
 
     // .. and send it out
     return dc_iostream_write(device->iostream, buffer, p-buffer, NULL);
@@ -155,17 +161,13 @@ deepsix_send_cmd(deepsix_device_t *device, const unsigned char cmd, const unsign
 //
 // Receive one 'line' of data
 //
-// The deepsix BLE protocol is ASCII line based and packetized.
-// Normally one packet is one line, but it looks like the Nordic
-// Semi BLE chip will sometimes send packets early (some internal
-// serial buffer timeout?) with incompete data.
+// The deepsix BLE protocol is binary and packetized.
 //
-// So read packets until you get newline.
 static dc_status_t
-deepsix_recv_line(deepsix_device_t *device, unsigned char *buf, size_t size)
+deepsix_recv_bytes(deepsix_device_t *device, unsigned char *buf, size_t size)
 {
     while (1) {
-        unsigned char buffer[20];
+        unsigned char buffer[350];
         size_t transferred = 0;
         dc_status_t status;
 
@@ -185,6 +187,7 @@ deepsix_recv_line(deepsix_device_t *device, unsigned char *buf, size_t size)
         memcpy(buf, buffer, transferred);
         buf += transferred;
         size -= transferred;
+        // when do _we_ terminate?
         if (buf[-1] == '\n')
             break;
     }
@@ -216,7 +219,7 @@ read_hex_byte(char *p)
 // Receive a reply packet
 //
 // The reply packet has the same format as the cmd packet we
-// send, except the first byte is '$' instead of '#'.
+// send, except the CMD_GROUP is incremented by one to show that it's an ack
 static dc_status_t
 deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, unsigned char *buf, size_t size, size_t *received)
 {
@@ -296,7 +299,7 @@ deepsix_send_recv(deepsix_device_t *device, const unsigned char cmd,
     status = deepsix_send_cmd(device, cmd, data, data_size);
     if (status != DC_STATUS_SUCCESS)
         return status;
-    status = deepsix_recv_data(device, cmd, result, result_size, &got);
+    status = deepsix_recv_data(device, cmd+1, result, result_size, &got);
     if (status != DC_STATUS_SUCCESS)
         return status;
     if (got != result_size) {
