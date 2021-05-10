@@ -221,14 +221,14 @@ read_hex_byte(char *p)
 // The reply packet has the same format as the cmd packet we
 // send, except the CMD_GROUP is incremented by one to show that it's an ack
 static dc_status_t
-deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, unsigned char *buf, size_t size, size_t *received)
+deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const unsigned char expected_subcmd, unsigned char *buf, size_t size, size_t *received)
 {
     int len, i;
     dc_status_t status;
     char buffer[8+2*MAX_DATA];
     int cmd, csum, ndata;
 
-    status = deepsix_recv_data(device, buffer, sizeof(buffer));
+    status = deepsix_recv_bytes(device, buffer, sizeof(buffer));
     if (status != DC_STATUS_SUCCESS)
         return status;
 
@@ -290,16 +290,17 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, unsign
 // command byte.
 static dc_status_t
 deepsix_send_recv(deepsix_device_t *device, const unsigned char cmd,
+                  const unsigned char sub_cmd,
                   const unsigned char *data, size_t data_size,
                   unsigned char *result, size_t result_size)
 {
     dc_status_t status;
     size_t got;
 
-    status = deepsix_send_cmd(device, cmd, data, data_size);
+    status = deepsix_send_cmd(device, cmd, sub_cmd, data, data_size);
     if (status != DC_STATUS_SUCCESS)
         return status;
-    status = deepsix_recv_data(device, cmd+1, result, result_size, &got);
+    status = deepsix_recv_data(device, cmd+1, sub_cmd, result, result_size, &got);
     if (status != DC_STATUS_SUCCESS)
         return status;
     if (got != result_size) {
@@ -311,13 +312,13 @@ deepsix_send_recv(deepsix_device_t *device, const unsigned char cmd,
 }
 
 static dc_status_t
-deepsix_recv_bulk(deepsix_device_t *device, const unsigned char cmd, unsigned char *buf, size_t len)
+deepsix_recv_bulk(deepsix_device_t *device, const unsigned char cmd, const unsigned char sub_cmd, unsigned char *buf, size_t len)
 {
     while (len) {
         dc_status_t status;
         size_t got;
 
-        status = deepsix_recv_data(device, cmd, buf, len, &got);
+        status = deepsix_recv_data(device, cmd+1, sub_cmd, buf, len, &got);
         if (status != DC_STATUS_SUCCESS)
             return status;
         if (got > len) {
@@ -381,6 +382,7 @@ static unsigned char bcd(int val)
     return 0;
 }
 
+// todo: is this needed? or just for the comsiq?
 static dc_status_t
 deepsix_device_timesync(dc_device_t *abstract, const dc_datetime_t *datetime)
 {
@@ -397,9 +399,10 @@ deepsix_device_timesync(dc_device_t *abstract, const dc_datetime_t *datetime)
     data[5] = bcd(datetime->second);
 
     // Maybe also check that we received one zero byte (ack?)
-    return deepsix_send_recv(device, CMD_SETTIME,
-                             data, sizeof(data),
-                             result, sizeof(result));
+//    return deepsix_send_recv(device, CMD_SETTIME,
+//                             data, sizeof(data),
+//                             result, sizeof(result));
+    return -1;
 }
 
 static dc_status_t
@@ -421,11 +424,11 @@ deepsix_download_dive(deepsix_device_t *device, unsigned char nr, dc_dive_callba
     dc_status_t status;
     char header[256];
     unsigned char *profile;
-
-    status = deepsix_send_recv(device,  CMD_GETDIVE, &nr, 1, &header_len, 1);
+// todo - something here
+    status = deepsix_send_recv(device,  CMD_GETDIVE, 00, &nr, 1, &header_len, 1);
     if (status != DC_STATUS_SUCCESS)
         return status;
-    status = deepsix_recv_bulk(device, RSP_DIVESTAT, header, header_len);
+    status = deepsix_recv_bulk(device, RSP_DIVESTAT, 00, header, header_len);
     if (status != DC_STATUS_SUCCESS)
         return status;
     memset(header + header_len, 0, 256 - header_len);
@@ -434,7 +437,8 @@ deepsix_download_dive(deepsix_device_t *device, unsigned char nr, dc_dive_callba
     if (memcmp(header, device->fingerprint, sizeof (device->fingerprint)) == 0)
         return DC_STATUS_DONE;
 
-    status = deepsix_send_recv(device,  CMD_GETPROFILE, &nr, 1, profilebytes, sizeof(profilebytes));
+    // todo - add actual commands
+    status = deepsix_send_recv(device,  CMD_GETPROFILE, 0, &nr, 1, profilebytes, sizeof(profilebytes));
     if (status != DC_STATUS_SUCCESS)
         return status;
     profile_len = (profilebytes[0] << 8) | profilebytes[1];
@@ -448,7 +452,8 @@ deepsix_download_dive(deepsix_device_t *device, unsigned char nr, dc_dive_callba
     // We make the dive data be 256 bytes of header, followed by the profile data
     memcpy(profile, header, 256);
 
-    status = deepsix_recv_bulk(device, RSP_DIVEPROF, profile+256, profile_len);
+    // todo - update this
+    status = deepsix_recv_bulk(device, RSP_DIVEPROF, 0, profile+256, profile_len);
     if (status != DC_STATUS_SUCCESS)
         return status;
 
@@ -470,7 +475,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     int i;
 
     val = 0;
-    status = deepsix_send_recv(device,  CMD_GETDIVENR, &val, 1, &nrdives, 1);
+    status = deepsix_send_recv(device,  CMD_GETDIVENR, 0, &val, 1, &nrdives, 1);
     if (status != DC_STATUS_SUCCESS)
         return status;
 
