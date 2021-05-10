@@ -135,9 +135,12 @@ deepsix_send_cmd(deepsix_device_t *device, const deepsix_command_sentence cmd_se
         return DC_STATUS_INVALIDARGS;
 
     // Calculate packet csum
-    csum = cmd_sentence.cmd + cmd_sentence.sub_command + cmd_sentence.byte_order;
-    for (i = 0; i < cmd_sentence.data_len; i++)
-        csum += cmd_sentence.data[i];
+    csum = cmd_sentence.cmd + cmd_sentence.sub_command + cmd_sentence.byte_order
+    if (cmd_sentence.data_len > 0) {
+        csum += cmd_sentence.data_len;
+        for (i = 0; i < cmd_sentence.data_len; i++)
+            csum += cmd_sentence.data[i];
+    }
     csum = csum ^ 255;
 
     // Fill the data buffer
