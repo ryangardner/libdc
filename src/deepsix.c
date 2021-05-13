@@ -505,14 +505,14 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     if (status != DC_STATUS_SUCCESS)
         return status;
 
-    if (!nrdives)
+    if (!dive_number)
         return DC_STATUS_SUCCESS;
 
     progress.maximum = nrdives;
     progress.current = 0;
     device_event_emit(abstract, DC_EVENT_PROGRESS, &progress);
 
-    for (i = 1; i <= nrdives; i++) {
+    for (i = 1; i <= dive_number; i++) {
         if (device_is_cancelled(abstract)) {
             dc_status_set_error(&status, DC_STATUS_CANCELLED);
             break;
