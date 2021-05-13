@@ -303,7 +303,7 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
 // command byte.
 static dc_status_t
 deepsix_send_recv(deepsix_device_t *device, const deepsix_command_sentence *cmd_sentence,
-                  unsigned char *result, size_t *result_len)
+                  unsigned char *result, unsigned char *result_len)
 {
     dc_status_t status;
 
@@ -317,7 +317,7 @@ deepsix_send_recv(deepsix_device_t *device, const deepsix_command_sentence *cmd_
 }
 
 static dc_status_t
-deepsix_recv_bulk(deepsix_device_t *device, const unsigned char cmd, const unsigned char sub_cmd, unsigned char *buf, size_t len)
+deepsix_recv_bulk(deepsix_device_t *device, const unsigned char cmd, const unsigned char sub_cmd, unsigned char *buf, unsigned char len)
 {
     while (len) {
         dc_status_t status;
@@ -437,13 +437,13 @@ deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t
     get_dive_info.data_len = sizeof(nr);
 
     unsigned char dive_info_bytes[MAX_DATA];
-    size_t dive_info_len;
+    unsigned char  dive_info_len;
 
     status = deepsix_send_recv(device, &get_dive_info, &dive_info_bytes, &dive_info_len);
 
     if (status != DC_STATUS_SUCCESS)
         return status;
-    size_t result_size;
+    unsigned char  result_size;
     deepsix_send_recv(device, &get_dive_info, &dive_info_bytes, &result_size);
 //    status = deepsix_recv_bulk(device, RSP_DIVESTAT, 00, header, header_len);
 //    if (status != DC_STATUS_SUCCESS)
