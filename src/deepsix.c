@@ -33,7 +33,7 @@
 #define CMD_SETTIME	0x20	// Send 6 byte date-time, get single-byte 00x00 ack
 #define CMD_23		0x23	// Send 00/01 byte, get ack back? Some metric/imperial setting?
 
-// "Read dives"?
+//
 #define CMD_GROUP_LOGS     0xC0 // get the logs
 #define CMD_GROUP_LOGS_ACK 0xC1 // incremented by one when acked
 
@@ -42,6 +42,13 @@
 #define COMMAND_INFO_SERIAL_NUMBER       0x03 // get the serial number
 #define SERIAL_NUMBER_LENGTH             12 // the length of the serial number
 
+// sub commands for the log
+#define LOG_INFO    0x02
+#define LOG_PROFILE 0x03 // the sub command for the dive profile info
+
+
+#define READ_WATCH = 0
+#define WRITE_WATCH = 1
 
 #define CMD_GETDIVENR	0x40	// Send empty byte, get single-byte number of dives back
 #define CMD_GETDIVE	0x41	// Send dive number (1-nr) byte, get dive stat length byte back
@@ -216,25 +223,6 @@ deepsix_recv_bytes(deepsix_device_t *device, deepsix_command_sentence *response)
     return DC_STATUS_SUCCESS;
 }
 
-static int
-hex_nibble(char c)
-{
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    return -1;
-}
-
-static int
-read_hex_byte(char *p)
-{
-    // This is negative if either of the nibbles is invalid
-    return (hex_nibble(p[0]) << 4) | hex_nibble(p[1]);
-}
-
 
 //
 // Receive a reply packet
@@ -242,7 +230,7 @@ read_hex_byte(char *p)
 // The reply packet has the same format as the cmd packet we
 // send, except the CMD_GROUP is incremented by one to show that it's an ack
 static dc_status_t
-deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const unsigned char expected_subcmd, unsigned char *buf, size_t size, size_t *received)
+deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const unsigned char expected_subcmd, unsigned char *buf, size_t *received)
 {
     int len, i;
     dc_status_t status;
@@ -315,22 +303,16 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
 // command byte.
 static dc_status_t
 deepsix_send_recv(deepsix_device_t *device, const deepsix_command_sentence *cmd_sentence,
-                  unsigned char *result, size_t result_size)
+                  unsigned char *result, size_t *result_len)
 {
     dc_status_t status;
-    size_t got;
 
     status = deepsix_send_cmd(device, cmd_sentence);
     if (status != DC_STATUS_SUCCESS)
         return status;
-    status = deepsix_recv_data(device, cmd_sentence->cmd+1, cmd_sentence->sub_command, result, result_size, &got);
+    status = deepsix_recv_data(device, cmd_sentence->cmd+1, cmd_sentence->sub_command, result, result_len);
     if (status != DC_STATUS_SUCCESS)
         return status;
-    if (got != result_size) {
-        ERROR(device->base.context, "DeepSix result size didn't match expected (expected %zu, got %zu)",
-              result_size, got);
-        return DC_STATUS_IO;
-    }
     return DC_STATUS_SUCCESS;
 }
 
@@ -341,7 +323,7 @@ deepsix_recv_bulk(deepsix_device_t *device, const unsigned char cmd, const unsig
         dc_status_t status;
         size_t got;
 
-        status = deepsix_recv_data(device, cmd+1, sub_cmd, buf, len, &got);
+        status = deepsix_recv_data(device, cmd+1, sub_cmd, buf, &got);
         if (status != DC_STATUS_SUCCESS)
             return status;
         if (got > len) {
@@ -439,55 +421,66 @@ deepsix_device_close (dc_device_t *abstract)
 static const char zero[MAX_DATA];
 
 static dc_status_t
-deepsix_download_dive(deepsix_device_t *device, unsigned char nr, dc_dive_callback_t callback, void *userdata)
+deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t callback, void *userdata)
 {
-    unsigned char header_len;
-    unsigned char profilebytes[2];
-    unsigned int profile_len;
     dc_status_t status;
-    char header[256];
     unsigned char *profile;
 // todo - something here
     status = DC_STATUS_UNSUPPORTED;
-//    status = deepsix_send_recv(device,  CMD_GETDIVE, 00, &nr, 1, &header_len, 1);
+
+    deepsix_command_sentence get_dive_info;
+
+    get_dive_info.cmd = CMD_GROUP_LOGS;
+    get_dive_info.sub_command = LOG_INFO;
+    get_dive_info.byte_order = endian_bit;
+    memcpy(get_dive_info.data, nr, sizeof(nr));
+    get_dive_info.data_len = sizeof(nr);
+
+    unsigned char dive_info_bytes[MAX_DATA];
+    size_t dive_info_len;
+
+    status = deepsix_send_recv(device, &get_dive_info, &dive_info_bytes, &dive_info_len);
+
     if (status != DC_STATUS_SUCCESS)
         return status;
+    size_t result_size;
+    deepsix_send_recv(device, &get_dive_info, &dive_info_bytes, &result_size);
 //    status = deepsix_recv_bulk(device, RSP_DIVESTAT, 00, header, header_len);
 //    if (status != DC_STATUS_SUCCESS)
 //        return status;
 //    memset(header + header_len, 0, 256 - header_len);
-
-    /* The header is the fingerprint. If we've already seen this header, we're done */
-    if (memcmp(header, device->fingerprint, sizeof (device->fingerprint)) == 0)
-        return DC_STATUS_DONE;
-
-    // todo - add actual commands
-//    status = deepsix_send_recv(device,  CMD_GETPROFILE, 0, &nr, 1, profilebytes, sizeof(profilebytes));
-    status = DC_STATUS_UNSUPPORTED;
-    if (status != DC_STATUS_SUCCESS)
-        return status;
-    profile_len = (profilebytes[0] << 8) | profilebytes[1];
-
-    profile = malloc(256 + profile_len);
-    if (!profile) {
-        ERROR (device->base.context, "Insufficient buffer space available.");
-        return DC_STATUS_NOMEMORY;
-    }
-
-    // We make the dive data be 256 bytes of header, followed by the profile data
-    memcpy(profile, header, 256);
-
-    // todo - update this
-    status = deepsix_recv_bulk(device, RSP_DIVEPROF, 0, profile+256, profile_len);
-    if (status != DC_STATUS_SUCCESS)
-        return status;
-
-    header_len = 0;
-    if (callback) {
-        if (!callback(profile, profile_len+256, header, header_len, userdata))
-            return DC_STATUS_DONE;
-    }
-    free(profile);
+//
+//    /* The header is the fingerprint. If we've already seen this header, we're done */
+//    if (memcmp(header, device->fingerprint, sizeof (device->fingerprint)) == 0)
+//        return DC_STATUS_DONE;
+//
+//    // todo - add actual commands
+////    status = deepsix_send_recv(device,  CMD_GETPROFILE, 0, &nr, 1, profilebytes, sizeof(profilebytes));
+//    status = DC_STATUS_UNSUPPORTED;
+//    if (status != DC_STATUS_SUCCESS)
+//        return status;
+//    profile_len = (profilebytes[0] << 8) | profilebytes[1];
+//
+//    profile = malloc(256 + profile_len);
+//    if (!profile) {
+//        ERROR (device->base.context, "Insufficient buffer space available.");
+//        return DC_STATUS_NOMEMORY;
+//    }
+//
+//    // We make the dive data be 256 bytes of header, followed by the profile data
+//    memcpy(profile, header, 256);
+//
+//    // todo - update this
+//    status = deepsix_recv_bulk(device, RSP_DIVEPROF, 0, profile+256, profile_len);
+//    if (status != DC_STATUS_SUCCESS)
+//        return status;
+//
+//    header_len = 0;
+//    if (callback) {
+//        if (!callback(profile, profile_len+256, header, header_len, userdata))
+//            return DC_STATUS_DONE;
+//    }
+//    free(profile);
     return DC_STATUS_SUCCESS;
 }
 
@@ -498,7 +491,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     deepsix_device_t *device = (deepsix_device_t *) abstract;
     unsigned char nrdives, val;
     dc_status_t status;
-    int i;
+    u_int16_t i;
 
     u_int16_t dive_number = 1;
     deepsix_command_sentence sentence;
