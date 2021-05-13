@@ -230,7 +230,7 @@ deepsix_recv_bytes(deepsix_device_t *device, deepsix_command_sentence *response)
 // The reply packet has the same format as the cmd packet we
 // send, except the CMD_GROUP is incremented by one to show that it's an ack
 static dc_status_t
-deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const unsigned char expected_subcmd, unsigned char *buf, size_t *received)
+deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const unsigned char expected_subcmd, unsigned char *buf, unsigned char *received)
 {
     int len, i;
     dc_status_t status;
