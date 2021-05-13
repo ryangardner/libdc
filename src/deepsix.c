@@ -106,25 +106,32 @@ static const dc_device_vtable_t deepsix_device_vtable = {
 // to create and receive the command
 // or reply
 //
-#define MAX_DATA 160
+#define MAX_DATA 200
 typedef struct deepsix_command_sentence {
     unsigned char cmd;
     unsigned char sub_command;
     unsigned char byte_order;
     unsigned char data_len;
     unsigned char data[MAX_DATA];
+    unsigned char csum;
 } deepsix_command_sentence;
 
 
 static char *
-write_hex_byte(unsigned char data, char *p)
-{
-    static const char hex[16] = "0123456789ABCDEF";
-    *p++ = hex[data >> 4];
-    *p++ = hex[data & 0xf];
-    return p;
+write_uint16_bytes(u_int16_t value, char *p) {
+    memcpy(p, &value, 2);
 }
 
+static unsigned char calculate_sentence_checksum(const deepsix_command_sentence *sentence) {
+    unsigned char checksum;
+    checksum = (unsigned char)(sentence->cmd + sentence->sub_command + sentence->byte_order);
+    if (sentence->data_len > 0) {
+        checksum += sentence->data_len;
+        for (int i = 0; i < sentence->data_len; i++)
+            checksum += sentence->data[i];
+    }
+    return checksum ^ 255;
+}
 //
 // Send a cmd packet.
 //
@@ -140,13 +147,14 @@ deepsix_send_cmd(deepsix_device_t *device, const deepsix_command_sentence cmd_se
         return DC_STATUS_INVALIDARGS;
 
     // Calculate packet csum
-    csum = cmd_sentence.cmd + cmd_sentence.sub_command + cmd_sentence.byte_order;
-    if (cmd_sentence.data_len > 0) {
-        csum += cmd_sentence.data_len;
-        for (i = 0; i < cmd_sentence.data_len; i++)
-            csum += cmd_sentence.data[i];
-    }
-    csum = csum ^ 255;
+    csum = calculate_sentence_checksum(&cmd_sentence);
+//    csum = cmd_sentence.cmd + cmd_sentence.sub_command + cmd_sentence.byte_order;
+//    if (cmd_sentence.data_len > 0) {
+//        csum += cmd_sentence.data_len;
+//        for (i = 0; i < cmd_sentence.data_len; i++)
+//            csum += cmd_sentence.data[i];
+//    }
+//    csum = csum ^ 255;
 
     // Fill the data buffer
     p = buffer;
@@ -162,40 +170,49 @@ deepsix_send_cmd(deepsix_device_t *device, const deepsix_command_sentence cmd_se
     return dc_iostream_write(device->iostream, buffer, p-buffer, NULL);
 }
 
+
 //
-// Receive one 'line' of data
+// Receive one 'packet' of data
 //
-// The deepsix BLE protocol is binary and packetized.
+// The deepsix BLE protocol is binary and starts with a command
 //
 static dc_status_t
-deepsix_recv_bytes(deepsix_device_t *device, unsigned char *buf, size_t size)
+deepsix_recv_bytes(deepsix_device_t *device, deepsix_command_sentence *response)
 {
-    while (1) {
-        unsigned char buffer[350];
-        size_t transferred = 0;
-        dc_status_t status;
+    unsigned char header[4];
+    dc_status_t status;
+    size_t header_transferred = 0;
 
-        status = dc_iostream_read(device->iostream, buffer, sizeof(buffer), &transferred);
-        if (status != DC_STATUS_SUCCESS) {
-            ERROR(device->base.context, "Failed to receive DeepSix reply packet.");
-            return status;
-        }
-        if (transferred > size) {
-            ERROR(device->base.context, "Deep6 reply packet with too much data (got %zu, expected %zu)", transferred, size);
-            return DC_STATUS_IO;
-        }
-        if (!transferred) {
-            ERROR(device->base.context, "Empty DeepSix reply packet");
-            return DC_STATUS_IO;
-        }
-        memcpy(buf, buffer, transferred);
-        buf += transferred;
-        size -= transferred;
-        // when do _we_ terminate?
-        if (buf[-1] == '\n')
-            break;
+    status = dc_iostream_read(device->iostream, header, sizeof(header), &header_transferred);
+    if (status != DC_STATUS_SUCCESS) {
+        ERROR(device->base.context, "Failed to receive DeepSix reply packet.");
+        return status;
     }
-    buf[-1] = 0;
+    response->cmd = header[0];
+    response->sub_command = header[1];
+    response->byte_order  = header[2];
+    response->data_len = header[3];
+    if (response->data_len > MAX_DATA) {
+        ERROR(device->base.context, "Received a response packet with a data length that is too long.");
+        return status;
+    }
+
+    unsigned char* data_buffer = response->data;
+
+    // response header
+//    if (transferred > response->data_len) {
+//        ERROR(device->base.context, "Deep6 reply packet with too much data (got %zu, expected %zu)", transferred, size);
+//        return DC_STATUS_IO;
+//    }
+
+    status = dc_iostream_read(device->iostream, data_buffer, response->data_len+1, NULL);
+
+    if (status != DC_STATUS_SUCCESS) {
+        ERROR(device->base.context, "Failed to receive DeepSix reply packet.");
+        return status;
+    }
+    response->csum=response->data[response->data_len];
+
     return DC_STATUS_SUCCESS;
 }
 
@@ -229,59 +246,62 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
 {
     int len, i;
     dc_status_t status;
-    char buffer[8+2*MAX_DATA];
+    deepsix_command_sentence response;
     int cmd, csum, ndata;
 
-    status = deepsix_recv_bytes(device, buffer, sizeof(buffer));
+    status = deepsix_recv_bytes(device, &response);
     if (status != DC_STATUS_SUCCESS)
         return status;
 
     // deepsix_recv_line() always zero-terminates the result
     // if it returned success, and has removed the final newline.
-    len = strlen(buffer);
-    HEXDUMP(device->base.context, DC_LOGLEVEL_DEBUG, "rcv", buffer, len);
+//    len = strlen(buffer);
+//    HEXDUMP(device->base.context, DC_LOGLEVEL_DEBUG, "rcv", buffer, len);
 
     // A valid reply should always be at least 7 characters: the
     // initial '$' and the three header HEX bytes.
-    if (len < 8 || buffer[0] != '$') {
-        ERROR(device->base.context, "Invalid DeepSix reply packet");
-        return DC_STATUS_IO;
-    }
+//    if (len < 8 || buffer[0] != '$') {
+//        ERROR(device->base.context, "Invalid DeepSix reply packet");
+//        return DC_STATUS_IO;
+//    }
 
-    cmd = buffer+1;
-    csum = read_hex_byte(buffer+3);
-    ndata = read_hex_byte(buffer+5);
+    cmd = response.cmd;
+    csum = response.csum;
+    ndata = response.data_len;
     if ((cmd | csum | ndata) < 0) {
         ERROR(device->base.context, "non-hex DeepSix reply packet header");
         return DC_STATUS_IO;
     }
 
-    // Verify the data length: it's the size of the HEX data,
-    // and should also match the line length we got (the 7
-    // is for the header data we already decoded above).
-    if ((ndata & 1) || ndata != len - 7) {
-        ERROR(device->base.context, "DeepSix reply packet data length does not match (claimed %d, got %d)", ndata, len-7);
-        return DC_STATUS_IO;
-    }
+//    // Verify the data length: it's the size of the HEX data,
+//    // and should also match the line length we got (the 7
+//    // is for the header data we already decoded above).
+//    if ((ndata & 1) || ndata != len - 7) {
+//        ERROR(device->base.context, "DeepSix reply packet data length does not match (claimed %d, got %d)", ndata, len-7);
+//        return DC_STATUS_IO;
+//    }
+//
+//    if (ndata >> 1 > size) {
+//        ERROR(device->base.context, "DeepSix reply packet too big for buffer (ndata=%d, size=%zu)", ndata, size);
+//        return DC_STATUS_IO;
+//    }
 
-    if (ndata >> 1 > size) {
-        ERROR(device->base.context, "DeepSix reply packet too big for buffer (ndata=%d, size=%zu)", ndata, size);
-        return DC_STATUS_IO;
-    }
+//    csum += response.cmd + response.sub_command + response.byte_order + response.data_len;
+//    for (int i = 0; i < cmd_sentence.data_len; i++)
+//        *p++ = cmd_sentence.data[i];
+//
+//    for (i = 7; i < len; i += 2) {
+//        int byte = read_hex_byte(buffer + i);
+//        if (byte < 0) {
+//            ERROR(device->base.context, "DeepSix reply packet data not valid hex");
+//            return DC_STATUS_IO;
+//        }
+//        *buf++ = byte;
+//        csum += byte;
+//    }
+    unsigned char calculated_csum = calculate_sentence_checksum(&response);
 
-    csum += cmd + ndata;
-
-    for (i = 7; i < len; i += 2) {
-        int byte = read_hex_byte(buffer + i);
-        if (byte < 0) {
-            ERROR(device->base.context, "DeepSix reply packet data not valid hex");
-            return DC_STATUS_IO;
-        }
-        *buf++ = byte;
-        csum += byte;
-    }
-
-    if (csum & 255) {
+    if (calculated_csum != response.csum) {
         ERROR(device->base.context, "DeepSix reply packet csum not valid (%x)", csum);
         return DC_STATUS_IO;
     }
