@@ -305,8 +305,9 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
         ERROR(device->base.context, "DeepSix reply packet csum not valid (%x)", csum);
         return DC_STATUS_IO;
     }
+    *received = response.data_len;
+    memcpy(buf, response.data, response.data_len);
 
-    *received = ndata >> 1;
     return DC_STATUS_SUCCESS;
 }
 
@@ -507,7 +508,6 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
 //    sentence.data_len = 2;
 //    // put the dive number into the data
 //    memcpy(sentence.data, &dive_number, 2);
-
     status = deepsix_send_recv(device, &sentence, &dive_number, 2);
     if (status != DC_STATUS_SUCCESS)
         return status;
