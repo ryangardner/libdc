@@ -433,11 +433,11 @@ deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t
     get_dive_info.cmd = CMD_GROUP_LOGS;
     get_dive_info.sub_command = LOG_INFO;
     get_dive_info.byte_order = endian_bit;
-    memcpy(get_dive_info.data, nr, sizeof(nr));
+    memcpy(get_dive_info.data, &nr, sizeof(nr));
     get_dive_info.data_len = sizeof(nr);
 
     unsigned char dive_info_bytes[MAX_DATA];
-    unsigned char  dive_info_len;
+    unsigned char dive_info_len;
 
     status = deepsix_send_recv(device, &get_dive_info, &dive_info_bytes, &dive_info_len);
 
