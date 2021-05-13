@@ -293,7 +293,7 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
         ERROR(device->base.context, "DeepSix reply packet csum not valid (%x)", csum);
         return DC_STATUS_IO;
     }
-    *received = response.data_len;
+    received = &response.data_len;
     memcpy(buf, response.data, response.data_len);
 
     return DC_STATUS_SUCCESS;
@@ -321,7 +321,7 @@ deepsix_recv_bulk(deepsix_device_t *device, const unsigned char cmd, const unsig
 {
     while (len) {
         dc_status_t status;
-        size_t got;
+        unsigned char got;
 
         status = deepsix_recv_data(device, cmd+1, sub_cmd, buf, &got);
         if (status != DC_STATUS_SUCCESS)
