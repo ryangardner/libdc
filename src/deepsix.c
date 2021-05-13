@@ -137,17 +137,17 @@ static unsigned char calculate_sentence_checksum(const deepsix_command_sentence 
 //
 //
 static dc_status_t
-deepsix_send_cmd(deepsix_device_t *device, const deepsix_command_sentence cmd_sentence)
+deepsix_send_cmd(deepsix_device_t *device, const deepsix_command_sentence *cmd_sentence)
 {
     char buffer[MAX_DATA], *p;
     unsigned char csum;
     int i;
 
-    if (cmd_sentence.data_len > MAX_DATA)
+    if (cmd_sentence->data_len > MAX_DATA)
         return DC_STATUS_INVALIDARGS;
 
     // Calculate packet csum
-    csum = calculate_sentence_checksum(&cmd_sentence);
+    csum = calculate_sentence_checksum(cmd_sentence);
 //    csum = cmd_sentence.cmd + cmd_sentence.sub_command + cmd_sentence.byte_order;
 //    if (cmd_sentence.data_len > 0) {
 //        csum += cmd_sentence.data_len;
@@ -158,12 +158,12 @@ deepsix_send_cmd(deepsix_device_t *device, const deepsix_command_sentence cmd_se
 
     // Fill the data buffer
     p = buffer;
-    *p++ = cmd_sentence.cmd;
-    *p++ = cmd_sentence.sub_command;
-    *p++ = cmd_sentence.byte_order;
-    *p++ = cmd_sentence.data_len;
-    for (i = 0; i < cmd_sentence.data_len; i++)
-        *p++ = cmd_sentence.data[i];
+    *p++ = cmd_sentence->cmd;
+    *p++ = cmd_sentence->sub_command;
+    *p++ = cmd_sentence->byte_order;
+    *p++ = cmd_sentence->data_len;
+    for (i = 0; i < cmd_sentence->data_len; i++)
+        *p++ = cmd_sentence->data[i];
     *p++ = csum;
 
     // .. and send it out
@@ -313,7 +313,7 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
 // Common communication pattern: send a command, expect data back with the same
 // command byte.
 static dc_status_t
-deepsix_send_recv(deepsix_device_t *device, struct deepsix_command_sentence cmd_sentence,
+deepsix_send_recv(deepsix_device_t *device, const deepsix_command_sentence *cmd_sentence,
                   unsigned char *result, size_t result_size)
 {
     dc_status_t status;
@@ -322,7 +322,7 @@ deepsix_send_recv(deepsix_device_t *device, struct deepsix_command_sentence cmd_
     status = deepsix_send_cmd(device, cmd_sentence);
     if (status != DC_STATUS_SUCCESS)
         return status;
-    status = deepsix_recv_data(device, cmd_sentence.cmd+1, cmd_sentence.sub_command, result, result_size, &got);
+    status = deepsix_recv_data(device, cmd_sentence->cmd+1, cmd_sentence->sub_command, result, result_size, &got);
     if (status != DC_STATUS_SUCCESS)
         return status;
     if (got != result_size) {
@@ -481,6 +481,7 @@ deepsix_download_dive(deepsix_device_t *device, unsigned char nr, dc_dive_callba
     if (status != DC_STATUS_SUCCESS)
         return status;
 
+    header_len = 0;
     if (callback) {
         if (!callback(profile, profile_len+256, header, header_len, userdata))
             return DC_STATUS_DONE;
@@ -507,7 +508,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
 //    // put the dive number into the data
 //    memcpy(sentence.data, &dive_number, 2);
 
-    status = deepsix_send_recv(device, sentence, &dive_number, 2);
+    status = deepsix_send_recv(device, &sentence, &dive_number, 2);
     if (status != DC_STATUS_SUCCESS)
         return status;
 
