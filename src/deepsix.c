@@ -453,8 +453,8 @@ deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t
         return status;
 
     memset(dive_info_bytes + dive_info_len, 0, EXCURSION_HDR_SIZE - dive_info_len);
-    if (memcmp(dive_info_bytes, device->fingerprint, sizeof (device->fingerprint)) == 0)
-        return DC_STATUS_DONE;
+//    if (memcmp(dive_info_bytes, device->fingerprint, sizeof (device->fingerprint)) == 0)
+//        return DC_STATUS_DONE;
 
     status = DC_STATUS_UNSUPPORTED;
     if (status != DC_STATUS_SUCCESS)
