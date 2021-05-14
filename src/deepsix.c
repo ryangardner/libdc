@@ -338,6 +338,7 @@ deepsix_recv_bulk(deepsix_device_t *device, u_int16_t dive_number, unsigned char
         }
         buf += got;
         len -= got;
+        offset += got;
     }
     return DC_STATUS_SUCCESS;
 }
