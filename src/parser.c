@@ -204,7 +204,7 @@ dc_parser_new_internal (dc_parser_t **out, dc_context_t *context, dc_family_t fa
 		rc = oceans_s1_parser_create(&parser, context);
 		break;
     case DC_FAMILY_DEEP6:
-	    rc = deepblu_parser_create(&parser, context);
+	    rc = deep6_parser_create(&parser, context);
 	    break;
     }
 	*out = parser;
