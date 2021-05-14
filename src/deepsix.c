@@ -225,7 +225,7 @@ deepsix_recv_bytes(deepsix_device_t *device, deepsix_command_sentence *response)
 // The reply packet has the same format as the cmd packet we
 // send, except the CMD_GROUP is incremented by one to show that it's an ack
 static dc_status_t
-deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const unsigned char expected_subcmd, unsigned char *buf, unsigned char *received)
+deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const unsigned char expected_subcmd, unsigned char *buf, unsigned char *received, unsigned char max_bytes)
 {
     int len, i;
     dc_status_t status;
@@ -288,6 +288,11 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
         ERROR(device->base.context, "DeepSix reply packet csum not valid (%x)", csum);
         return DC_STATUS_IO;
     }
+    // For the bulk receive, it puts garbage data after the actual profile data
+    // so we only want the actual bytes we care about
+    if (max_bytes < response.data_len) {
+        response.data_len = max_bytes;
+    }
     *received = response.data_len;
     memcpy(buf, response.data, response.data_len);
 
@@ -298,14 +303,14 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
 // command byte.
 static dc_status_t
 deepsix_send_recv(deepsix_device_t *device, const deepsix_command_sentence *cmd_sentence,
-                  unsigned char *result, unsigned char *result_len)
+                  unsigned char *result, unsigned char *result_len, unsigned char max_bytes)
 {
     dc_status_t status;
 
     status = deepsix_send_cmd(device, cmd_sentence);
     if (status != DC_STATUS_SUCCESS)
         return status;
-    status = deepsix_recv_data(device, cmd_sentence->cmd+1, cmd_sentence->sub_command, result, result_len);
+    status = deepsix_recv_data(device, cmd_sentence->cmd+1, cmd_sentence->sub_command, result, result_len, max_bytes);
     if (status != DC_STATUS_SUCCESS)
         return status;
     return DC_STATUS_SUCCESS;
@@ -329,7 +334,7 @@ deepsix_recv_bulk(deepsix_device_t *device, u_int16_t dive_number, unsigned char
         array_uint32_le_set(&get_profile.data[2], offset);
         get_profile.data_len = 6;
 
-        status = deepsix_send_recv(device, &get_profile, buf, &got);
+        status = deepsix_send_recv(device, &get_profile, buf, &got, len);
         if (status != DC_STATUS_SUCCESS)
             return status;
         if (got > len) {
@@ -448,7 +453,7 @@ deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t
 
 
 
-    status = deepsix_send_recv(device, &get_dive_info, &dive_info_bytes, &dive_info_len);
+    status = deepsix_send_recv(device, &get_dive_info, &dive_info_bytes, &dive_info_len, MAX_DATA);
 
     if (status != DC_STATUS_SUCCESS)
         return status;
@@ -537,7 +542,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     char dive_number_buff[2];
     // get the last dive number
     unsigned char data_len;
-    status = deepsix_send_recv(device, &sentence, &dive_number_buff, &data_len);
+    status = deepsix_send_recv(device, &sentence, &dive_number_buff, &data_len, MAX_DATA);
     dive_number = array_uint16_le(dive_number_buff);
 
     if (status != DC_STATUS_SUCCESS)
