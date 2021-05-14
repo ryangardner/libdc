@@ -288,7 +288,7 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
         ERROR(device->base.context, "DeepSix reply packet csum not valid (%x)", csum);
         return DC_STATUS_IO;
     }
-    received = &(response.data_len);
+    *received = response.data_len;
     memcpy(buf, response.data, response.data_len);
 
     return DC_STATUS_SUCCESS;
@@ -318,7 +318,7 @@ deepsix_recv_bulk(deepsix_device_t *device, u_int16_t dive_number, unsigned char
     deepsix_command_sentence get_profile;
 
     get_profile.cmd = CMD_GROUP_LOGS;
-    get_profile.sub_command = LOG_INFO;
+    get_profile.sub_command = LOG_PROFILE;
     get_profile.byte_order = endian_bit;
 
     while (len) {
