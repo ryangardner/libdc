@@ -544,7 +544,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     if (!dive_number)
         return DC_STATUS_SUCCESS;
 
-    progress.maximum = nrdives;
+    progress.maximum = dive_number;
     progress.current = 0;
     device_event_emit(abstract, DC_EVENT_PROGRESS, &progress);
 
