@@ -288,7 +288,7 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
         ERROR(device->base.context, "DeepSix reply packet csum not valid (%x)", csum);
         return DC_STATUS_IO;
     }
-    memcpy(&received, &response.data_len, sizeof received);
+    received = response.data_len;
     memcpy(buf, response.data, response.data_len);
 
     return DC_STATUS_SUCCESS;
@@ -432,7 +432,7 @@ deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t
 {
     dc_status_t status;
     unsigned char dive_info_bytes[EXCURSION_HDR_SIZE];
-    unsigned char dive_info_len;
+    unsigned char dive_info_len = 0;
     unsigned char *profile;
     unsigned int profile_len;
     status = DC_STATUS_UNSUPPORTED;
@@ -461,8 +461,8 @@ deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t
     if (status != DC_STATUS_SUCCESS)
         return status;
 
-    unsigned int starting_offset = array_uint32_le(&dive_info_bytes[44]);
-    unsigned int ending_offset = array_uint32_le(&dive_info_bytes[48]);
+    unsigned int starting_offset = array_uint32_le(&dive_info_bytes[40]);
+    unsigned int ending_offset = array_uint32_le(&dive_info_bytes[44]);
 
     profile_len = ending_offset - starting_offset;
     profile = malloc(EXCURSION_HDR_SIZE + profile_len);
@@ -536,7 +536,8 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     sentence.data_len = 2;
     char dive_number_buff[2];
     // get the last dive number
-    status = deepsix_send_recv(device, &sentence, &dive_number_buff, 2);
+    unsigned char data_len;
+    status = deepsix_send_recv(device, &sentence, &dive_number_buff, &data_len);
     dive_number = array_uint16_le(dive_number_buff);
 
     if (status != DC_STATUS_SUCCESS)
