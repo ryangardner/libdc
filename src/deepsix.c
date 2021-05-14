@@ -435,6 +435,9 @@ static const char zero[MAX_DATA];
 static dc_status_t
 deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t callback, void *userdata)
 {
+    unsigned char header_len;
+    char header[256];
+
     dc_status_t status;
     unsigned char dive_info_bytes[EXCURSION_HDR_SIZE];
     unsigned char dive_info_len = 0;
@@ -449,9 +452,6 @@ deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t
     get_dive_info.byte_order = endian_bit;
     memcpy(get_dive_info.data, &nr, sizeof(nr));
     get_dive_info.data_len = sizeof(nr);
-
-
-
 
     status = deepsix_send_recv(device, &get_dive_info, &dive_info_bytes, &dive_info_len, MAX_DATA);
 
@@ -484,7 +484,7 @@ deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t
 //    status = deepsix_recv_bulk(device, RSP_DIVESTAT, 00, header, header_len);
 //    if (status != DC_STATUS_SUCCESS)
 //        return status;
-//    memset(header + header_len, 0, 256 - header_len);
+    memset(header + header_len, 0, 256 - header_len);
 //
 //    /* The header is the fingerprint. If we've already seen this header, we're done */
 //    if (memcmp(header, device->fingerprint, sizeof (device->fingerprint)) == 0)
@@ -511,12 +511,13 @@ deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t
 //    if (status != DC_STATUS_SUCCESS)
 //        return status;
 //
-//    header_len = 0;
-//    if (callback) {
-//        if (!callback(profile, profile_len+256, header, header_len, userdata))
-//            return DC_STATUS_DONE;
-//    }
-//    free(profile);
+    header_len = 0;
+    if (callback) {
+        // typedef int (*dc_dive_callback_t) (const unsigned char *data, unsigned int size, const unsigned char *fingerprint, unsigned int fsize, void *userdata);
+        if (!callback(profile, profile_len+EXCURSION_HDR_SIZE, header, header_len, userdata))
+            return DC_STATUS_DONE;
+    }
+    free(profile);
     return DC_STATUS_SUCCESS;
 }
 
