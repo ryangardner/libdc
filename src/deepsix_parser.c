@@ -1,5 +1,5 @@
 /*
- * Deeplu Excursion parsing
+ * Deep6 Excursion parsing
  *
  * Copyright (C) 2020 Ryan Gardner
  *
@@ -104,40 +104,49 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
 {
     deepsix_parser_t *deepsix = (deepsix_parser_t *) abstract;
     const unsigned char *hdr = data;
-    const unsigned char *profile = data + 256;
-    unsigned int divetime, maxpressure;
+    const unsigned char *profile = data + EXCURSION_HDR_SIZE;
+    unsigned int divetime, maxpressure, sampling_rate, lowest_water_temp, average_pressure;
     dc_gasmix_t gasmix = {0, };
 
-    if (size < 256)
+    if (size < EXCURSION_HDR_SIZE)
         return DC_STATUS_IO;
 
     deepsix->callback = NULL;
     deepsix->userdata = NULL;
     memset(&deepsix->cache, 0, sizeof(deepsix->cache));
 
-    // LE16 at 0 is 'dive number'
+    // dive type - scuba = 0
+    int divetype = array_uint32_le(&hdr[4]);
 
-    // LE16 at 12 is the dive time
-    // It's in seconds for freedives, minutes for scuba/gauge
-    divetime = hdr[12] + 256*hdr[13];
+    int profile_data_len = array_uint32_le(&data[8]);
+
+    // LE32 at 20 is the dive duration in ms
+    divetime = array_uint32_le(&hdr[20]);
+    // SCUBA - divetime in ms for everything
+    divetime /= 1000;
+    // sample rate is in seconds
+    deepsix->sample_interval = array_uint32_le(&hdr[24]);
+    maxpressure = array_uint32_le(&hdr[28]);
+//    lowest_water_temp = array_uint32_le(hdr[32]);
+//    average_pressure = array_uint32_le(hdr[36]);
+
 
     // Byte at 2 is 'activity type' (2 = scuba, 3 = gauge, 4 = freedive)
     // Byte at 3 is O2 percentage
-    switch (data[2]) {
-        case 2:
-            // SCUBA - divetime in minutes
-            divetime *= 60;
-            gasmix.oxygen = data[3] / 100.0;
+    switch (divetype) {
+        case 0:
+            // TODO: is the 02 in the log info somewhere? I can't find it - Maybe O2Ratio?
+            gasmix.oxygen = 21 / 100.0;
             DC_ASSIGN_IDX(deepsix->cache, GASMIX, 0, gasmix);
             DC_ASSIGN_FIELD(deepsix->cache, GASMIX_COUNT, 1);
             DC_ASSIGN_FIELD(deepsix->cache, DIVEMODE, DC_DIVEMODE_OC);
             break;
-        case 3:
+        //todo - validate the other modes
+        case 1:
             // GAUGE - divetime in minutes
-            divetime *= 60;
             DC_ASSIGN_FIELD(deepsix->cache, DIVEMODE, DC_DIVEMODE_GAUGE);
             break;
-        case 4:
+        case 2:
             // FREEDIVE - divetime in seconds
             DC_ASSIGN_FIELD(deepsix->cache, DIVEMODE, DC_DIVEMODE_FREEDIVE);
             deepsix->sample_interval = 1;
@@ -147,13 +156,9 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
             break;
     }
 
-    // Seems to be fixed at 20s for scuba, 1s for freedive
-    deepsix->sample_interval = hdr[26];
-
-    maxpressure = hdr[22] + 256*hdr[23];	// Maxpressure in millibar
-
     DC_ASSIGN_FIELD(deepsix->cache, DIVETIME, divetime);
     DC_ASSIGN_FIELD(deepsix->cache, MAXDEPTH, pressure_to_depth(maxpressure));
+
 
     return DC_STATUS_SUCCESS;
 }
@@ -190,12 +195,12 @@ deepsix_parser_get_datetime (dc_parser_t *abstract, dc_datetime_t *datetime)
 
     if (len < 256)
         return DC_STATUS_IO;
-    datetime->year = data[6] + (data[7] << 8);
-    datetime->day = data[8];
-    datetime->month = data[9];
-    datetime->minute = data[10];
-    datetime->hour = data[11];
-    datetime->second = 0;
+    datetime->year = data[12] + 2000;
+    datetime->month = data[13];
+    datetime->day = data[14];
+    datetime->hour = data[15];
+    datetime->minute = data[16];
+    datetime->second = data[17];
     datetime->timezone = DC_TIMEZONE_NONE;
 
     return DC_STATUS_SUCCESS;
@@ -254,18 +259,19 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
     deepsix->userdata = userdata;
 
     // Skip the header information
-    if (len < 256)
+    if (len < EXCURSION_HDR_SIZE)
         return DC_STATUS_IO;
-    data += 256;
-    len -= 256;
+    data += EXCURSION_HDR_SIZE;
+    len -= EXCURSION_HDR_SIZE;
 
     // The rest should be samples every 20s with temperature and depth
-    for (i = 0; i < len/4; i++) {
+    for (i = 0; i < len/8; i++) {
         dc_sample_value_t sample = {0};
-        unsigned int temp = data[0]+256*data[1];
-        unsigned int pressure = data[2]+256*data[3];
+        data += 2;
+        unsigned int pressure = array_uint16_le(&data);
+        unsigned int temp = array_uint16_le(&data+2);
+        data += 6;
 
-        data += 4;
         sample.time = (i+1)*deepsix->sample_interval;
         if (callback) callback (DC_SAMPLE_TIME, sample, userdata);
 

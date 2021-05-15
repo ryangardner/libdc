@@ -77,8 +77,6 @@
 //                                     (14 14 14 0c 01 0e)
 #define CMD_5f		0x5f	// Send empty byte, get six bytes back (00 00 07 00 00 00)
 
-#define EXCURSION_HDR_SIZE	165
-
 typedef struct deepsix_device_t {
     dc_device_t base;
     dc_iostream_t *iostream;

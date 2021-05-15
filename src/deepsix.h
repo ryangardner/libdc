@@ -36,6 +36,8 @@ deep6_device_open (dc_device_t **device, dc_context_t *context, dc_iostream_t *i
 dc_status_t
 deep6_parser_create (dc_parser_t **parser, dc_context_t *context);
 
+#define EXCURSION_HDR_SIZE	165
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
