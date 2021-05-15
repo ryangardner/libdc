@@ -267,13 +267,14 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
     // the temp will carry over for times when it's on the surface...
     unsigned int temp;
 
+    int nonempty_sample_count = 0;
     for (i = 0; i < len/6; i++) {
         dc_sample_value_t sample = {0};
         char point_type = data[0];
         data += 2;
 
         if (point_type == 2) {
-            sample.time = (i+1)*deepsix->sample_interval;
+            sample.time = (nonempty_sample_count)*deepsix->sample_interval;
             if (callback) callback (DC_SAMPLE_TIME, sample, userdata);
 
             unsigned int pressure = array_uint16_le(data);
@@ -284,6 +285,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
 
             sample.temperature = temp / 10.0;
             if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
+            nonempty_sample_count++;
         }
 //        else {
 //            sample.depth = 0;
