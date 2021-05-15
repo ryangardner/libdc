@@ -272,10 +272,10 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
         char point_type = data[0];
         data += 2;
 
-        sample.time = (i+1)*deepsix->sample_interval;
-        if (callback) callback (DC_SAMPLE_TIME, sample, userdata);
-
         if (point_type == 2) {
+            sample.time = (i+1)*deepsix->sample_interval;
+            if (callback) callback (DC_SAMPLE_TIME, sample, userdata);
+
             unsigned int pressure = array_uint16_le(data);
             temp = array_uint16_le(data + 2);
 
@@ -285,13 +285,13 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             sample.temperature = temp / 10.0;
             if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
         }
-        else {
-            sample.depth = 0;
-            if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
-
-            sample.temperature = temp / 10.0;
-            if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
-        }
+//        else {
+//            sample.depth = 0;
+//            if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
+//
+//            sample.temperature = temp / 10.0;
+//            if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
+//        }
         data += 4;
     }
 
