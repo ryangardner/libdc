@@ -268,8 +268,8 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
     for (i = 0; i < len/6; i++) {
         dc_sample_value_t sample = {0};
         data += 2;
-        unsigned int pressure = array_uint16_le(&data);
-        unsigned int temp = array_uint16_le(&data+2);
+        unsigned int pressure = array_uint16_le(data);
+        unsigned int temp = array_uint16_le(data+2);
         data += 4;
 
         sample.time = (i+1)*deepsix->sample_interval;
