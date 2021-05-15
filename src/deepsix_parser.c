@@ -267,19 +267,23 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
     // The rest should be samples every 20s with temperature and depth
     for (i = 0; i < len/6; i++) {
         dc_sample_value_t sample = {0};
+        char point_type = data[0];
         data += 2;
-        unsigned int pressure = array_uint16_le(data);
-        unsigned int temp = array_uint16_le(data+2);
-        data += 4;
 
         sample.time = (i+1)*deepsix->sample_interval;
         if (callback) callback (DC_SAMPLE_TIME, sample, userdata);
 
-        sample.depth = pressure_to_depth(pressure);
-        if (callback) callback (DC_SAMPLE_DEPTH, sample, userdata);
+        if (point_type == 2) {
+            unsigned int pressure = array_uint16_le(data);
+            unsigned int temp = array_uint16_le(data + 2);
 
-        sample.temperature = temp / 10.0;
-        if (callback) callback (DC_SAMPLE_TEMPERATURE, sample, userdata);
+            sample.depth = pressure_to_depth(pressure);
+            if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
+
+            sample.temperature = temp / 10.0;
+            if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
+        }
+        data += 4;
     }
 
     return DC_STATUS_SUCCESS;
