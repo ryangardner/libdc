@@ -285,23 +285,37 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             nonempty_sample_count++;
             i += 6;
             data += 4;
+
+            if (data <= 0 || data >=5) {
+                data += 1;
+                i ++ 1;
+            }
             continue;
         }
         // not sure what this point type indicates, but the phone app skips 8 bytes for it
         if (point_type == 1) {
             i+=8;
             data += 8;
+            if (data <= 0 || data >=5) {
+                data += 1;
+                i ++ 1;
+            }
             continue;
         }
         if (point_type == 3) {
             i+=6;
             data += 4;
+
+            if (data <= 0 || data >=5) {
+                data += 1;
+                i ++ 1;
+            }
             continue;
         }
-        if (point_type != 3 && point_type != 4) {
-            i+=1;
-            data+=1;
-        }
+//        if (point_type != 3 && point_type != 4) {
+//            i+=1;
+//            data+=1;
+//        }
 
     }
 
