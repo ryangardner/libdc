@@ -321,10 +321,16 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             }
             continue;
         }
-//        if (point_type != 3 && point_type != 4) {
-//            i+=1;
-//            data+=1;
-//        }
+        if (point_type != 3 && point_type != 4) {
+            if (data[8] <= 0 || data[8] >= 5) {
+                data += 1;
+                i++;
+            }
+            else {
+                i += 8;
+                data += 8;
+            }
+        }
 
     }
 
