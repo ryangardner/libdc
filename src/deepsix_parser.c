@@ -253,7 +253,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
 {
     deepsix_parser_t *deepsix = (deepsix_parser_t *) abstract;
     const unsigned char *data = deepsix->base.data;
-    int len = deepsix->base.size, i;
+    int len = deepsix->base.size, i = 0;
 
     deepsix->callback = callback;
     deepsix->userdata = userdata;
@@ -265,7 +265,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
     len -= EXCURSION_HDR_SIZE;
 
     int nonempty_sample_count = 0;
-    for (i = 0; i < len/6; i++) {
+    while (i < len) {
         dc_sample_value_t sample = {0};
         char point_type = data[0];
         data += 2;
@@ -283,6 +283,13 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             sample.temperature = temp / 10.0;
             if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
             nonempty_sample_count++;
+            i += 6;
+            data += 4;
+        }
+        // not sure what this point type indicates, but the phone app skips 8 bytes for it
+        if (point_type == 1) {
+            i+=8;
+            data += 8;
         }
 //        else {
 //            sample.depth = 0;
@@ -291,7 +298,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
 //            sample.temperature = temp / 10.0;
 //            if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
 //        }
-        data += 4;
+
     }
 
     return DC_STATUS_SUCCESS;
