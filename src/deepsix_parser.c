@@ -291,6 +291,11 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             i+=8;
             data += 8;
         }
+        if (point_type == 3) {
+            i += 6;
+            data += 4;
+        }
+}
 //        else {
 //            sample.depth = 0;
 //            if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
