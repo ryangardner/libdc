@@ -264,9 +264,6 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
     data += EXCURSION_HDR_SIZE;
     len -= EXCURSION_HDR_SIZE;
 
-    // the temp will carry over for times when it's on the surface...
-    unsigned int temp;
-
     int nonempty_sample_count = 0;
     for (i = 0; i < len/6; i++) {
         dc_sample_value_t sample = {0};
@@ -278,7 +275,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             if (callback) callback (DC_SAMPLE_TIME, sample, userdata);
 
             unsigned int pressure = array_uint16_le(data);
-            temp = array_uint16_le(data + 2);
+            unsigned int temp = array_uint16_le(data + 2);
 
             sample.depth = pressure_to_depth(pressure);
             if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
