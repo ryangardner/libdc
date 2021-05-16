@@ -288,7 +288,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
 
             if (data <= 0 || data >=5) {
                 data += 1;
-                i ++ 1;
+                i++;
             }
             continue;
         }
@@ -298,7 +298,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             data += 8;
             if (data <= 0 || data >=5) {
                 data += 1;
-                i ++ 1;
+                i++;
             }
             continue;
         }
@@ -308,7 +308,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
 
             if (data <= 0 || data >=5) {
                 data += 1;
-                i ++ 1;
+                i++;
             }
             continue;
         }
