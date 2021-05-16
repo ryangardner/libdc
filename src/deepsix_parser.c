@@ -267,15 +267,14 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
     int nonempty_sample_count = 0;
     while (i < len) {
         dc_sample_value_t sample = {0};
-        char point_type = data[0];
-        data += 2;
+        char point_type = data[0];;
 
         if (point_type == 2) {
             sample.time = (nonempty_sample_count)*deepsix->sample_interval;
             if (callback) callback (DC_SAMPLE_TIME, sample, userdata);
 
-            unsigned int pressure = array_uint16_le(data);
-            unsigned int temp = array_uint16_le(data + 2);
+            unsigned int pressure = array_uint16_le(data + 2);
+            unsigned int temp = array_uint16_le(data + 4);
 
             sample.depth = pressure_to_depth(pressure);
             if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
@@ -283,32 +282,42 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             sample.temperature = temp / 10.0;
             if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
             nonempty_sample_count++;
-            i += 6;
-            data += 4;
-
-            if (data <= 0 || data >=5) {
+            if (data[6] <= 0 || data[6] >= 5) {
                 data += 1;
                 i++;
             }
+            else {
+                i += 6;
+                data += 6;
+            }
+
             continue;
         }
         // not sure what this point type indicates, but the phone app skips 8 bytes for it
         if (point_type == 1) {
-            i+=8;
-            data += 8;
-            if (data <= 0 || data >=5) {
+
+            if (data[8] <= 0 || data[8] >= 5) {
                 data += 1;
                 i++;
+            }
+            else {
+                i += 8;
+                data += 8;
             }
             continue;
         }
         if (point_type == 3) {
+
             i+=6;
             data += 4;
 
-            if (data <= 0 || data >=5) {
+            if (data[6] <= 0 || data[6] >= 5) {
                 data += 1;
                 i++;
+            }
+            else {
+                i += 6;
+                data += 6;
             }
             continue;
         }
