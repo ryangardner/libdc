@@ -315,7 +315,7 @@ deepsix_send_recv(deepsix_device_t *device, const deepsix_command_sentence *cmd_
 }
 
 static dc_status_t
-deepsix_recv_bulk(deepsix_device_t *device, u_int16_t dive_number, unsigned char *buf, unsigned int len)
+deepsix_recv_bulk(deepsix_device_t *device, unsigned short dive_number, unsigned char *buf, unsigned int len)
 {
     unsigned int offset = 0;
     deepsix_command_sentence get_profile;
@@ -431,7 +431,7 @@ deepsix_device_close (dc_device_t *abstract)
 static const char zero[MAX_DATA];
 
 static dc_status_t
-deepsix_download_dive(deepsix_device_t *device, u_int16_t nr, dc_dive_callback_t callback, void *userdata)
+deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callback_t callback, void *userdata)
 {
     unsigned char header_len;
     char header[256];
@@ -526,9 +526,9 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     deepsix_device_t *device = (deepsix_device_t *) abstract;
     unsigned char nrdives, val;
     dc_status_t status;
-    u_int16_t i;
+    unsigned short i;
 
-    u_int16_t dive_number = 0;
+    unsigned short dive_number = 0;
     deepsix_command_sentence sentence;
     sentence.cmd = CMD_GROUP_INFO;
     sentence.sub_command = COMMAND_INFO_LAST_DIVE_LOG_INDEX;
