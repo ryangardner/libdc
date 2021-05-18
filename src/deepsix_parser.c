@@ -47,6 +47,8 @@ typedef struct deepsix_parser_t {
     // 20 sec for scuba, 1 sec for freedives
     int sample_interval;
 
+    char firmware_version[6];
+
     // Common fields
     struct dc_field_cache cache;
 } deepsix_parser_t;
@@ -119,6 +121,7 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
     int divetype = array_uint32_le(&hdr[4]);
 
     int profile_data_len = array_uint32_le(&data[8]);
+    memcpy(&(deepsix->firmware_version), &data[48], 6);
 
     // LE32 at 20 is the dive duration in ms
     divetime = array_uint32_le(&hdr[20]);
