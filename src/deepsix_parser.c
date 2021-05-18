@@ -276,7 +276,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
         char point_type = data[0];
         int near_end_of_data = (len - i <= 8);
 
-        if (firmware4c) {
+        if (firmware4c == 0) {
             if (point_type == 1) {
                 if (point_type != 2 && len - i > 8) {
                     i++;
