@@ -23,6 +23,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "deepsix.h"
 #include "context-private.h"
@@ -509,6 +510,17 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
 //    if (status != DC_STATUS_SUCCESS)
 //        return status;
 //
+    printf("Dive #%2d ----- \n", nr);
+    printf(" -- header --\n");
+    for (int x = 0; x < dive_info_len; x++) {
+        printf("%02x", dive_info_bytes[x]);
+    }
+    printf(" \n-- profile --\n");
+    for (int x = EXCURSION_HDR_SIZE; x < profile_len; x++) {
+        printf("%02x", profile[x]);
+    }
+    printf("\n\n");
+
     header_len = 0;
     if (callback) {
         // typedef int (*dc_dive_callback_t) (const unsigned char *data, unsigned int size, const unsigned char *fingerprint, unsigned int fsize, void *userdata);
