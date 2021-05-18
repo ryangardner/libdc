@@ -513,10 +513,10 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
 
     char divehdr[25];
     sprintf(divehdr, "Dive #%2d header: ", nr);
-    HEXDUMP(device->base.context, DC_LOGLEVEL_DEBUG, divehdr, dive_info_bytes, dive_info_len);
+    HEXDUMP(device->base.context, DC_LOGLEVEL_INFO, divehdr, (const unsigned char *) dive_info_bytes, dive_info_len);
     char diveprofile[30];
     sprintf(diveprofile, "Dive #%2d profile: ", nr);
-    HEXDUMP(device->base.context, DC_LOGLEVEL_DEBUG, diveprofile, profile[EXCURSION_HDR_SIZE], profile_len);
+    HEXDUMP(device->base.context, DC_LOGLEVEL_INFO, diveprofile, (const unsigned char *) profile+EXCURSION_HDR_SIZE, profile_len);
 
     header_len = 0;
     if (callback) {
