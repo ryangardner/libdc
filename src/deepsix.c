@@ -510,16 +510,13 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
 //    if (status != DC_STATUS_SUCCESS)
 //        return status;
 //
-    printf("Dive #%2d ----- \n", nr);
-    printf(" -- header --\n");
-    for (int x = 0; x < dive_info_len; x++) {
-        printf("%02x", dive_info_bytes[x]);
-    }
-    printf(" \n-- profile --\n");
-    for (int x = EXCURSION_HDR_SIZE; x < profile_len; x++) {
-        printf("%02x", profile[x]);
-    }
-    printf("\n\n");
+
+    char divehdr[25];
+    sprintf(divehdr, "Dive #%2d header: ", nr);
+    HEXDUMP(device->base.context, DC_LOGLEVEL_DEBUG, divehdr, dive_info_bytes, dive_info_len);
+    char diveprofile[30];
+    sprintf(diveprofile, "Dive #%2d profile: ", nr);
+    HEXDUMP(device->base.context, DC_LOGLEVEL_DEBUG, diveprofile, profile[EXCURSION_HDR_SIZE], profile_len);
 
     header_len = 0;
     if (callback) {
