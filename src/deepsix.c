@@ -30,11 +30,6 @@
 #include "device-private.h"
 #include "array.h"
 
-// "Write state"
-#define CMD_SETTIME	0x20	// Send 6 byte date-time, get single-byte 00x00 ack
-#define CMD_23		0x23	// Send 00/01 byte, get ack back? Some metric/imperial setting?
-
-//
 #define CMD_GROUP_LOGS     0xC0 // get the logs
 #define CMD_GROUP_LOGS_ACK 0xC1 // incremented by one when acked
 
@@ -42,6 +37,9 @@
 #define COMMAND_INFO_LAST_DIVE_LOG_INDEX 0x04 // get the index of the last dive
 #define COMMAND_INFO_SERIAL_NUMBER       0x03 // get the serial number
 #define SERIAL_NUMBER_LENGTH             12 // the length of the serial number
+
+#define CMD_GROUP_SETTINGS  0xB0 // settings
+#define CMD_SETTING_DATE    0x01 // date setting
 
 // sub commands for the log
 #define LOG_INFO    0x02
@@ -51,40 +49,13 @@
 #define READ_WATCH = 0
 #define WRITE_WATCH = 1
 
-#define CMD_GETDIVENR	0x40	// Send empty byte, get single-byte number of dives back
-#define CMD_GETDIVE	0x41	// Send dive number (1-nr) byte, get dive stat length byte back
-#define RSP_DIVESTAT	0x42	//  .. followed by packets of dive stat for that dive of that length
-#define CMD_GETPROFILE	0x43	// Send dive number (1-nr) byte, get dive profile length BE word back
-#define RSP_DIVEPROF  0x44	//  .. followed by packets of dive profile of that length
-
-// "Read state"
-#define CMD_GETTIME	0x50	// Send empty byte, get six-byte bcd date-time back
-#define CMD_51		0x51	// Send empty byte, get four bytes back (03 dc 00 e3)
-#define CMD_52		0x52	// Send empty byte, get two bytes back (bf 8d)
-#define CMD_53		0x53	// Send empty byte, get six bytes back (0e 81 00 03 00 00)
-#define CMD_54		0x54	// Send empty byte, get byte back (00)
-#define CMD_55		0x55	// Send empty byte, get byte back (00)
-#define CMD_56		0x56	// Send empty byte, get byte back (00)
-#define CMD_57		0x57	// Send empty byte, get byte back (00)
-#define CMD_58		0x58	// Send empty byte, get byte back (52)
-#define CMD_59		0x59	// Send empty byte, get six bytes back (00 00 07 00 00 00)
-//                                     (00 00 00 00 00 00)
-#define CMD_5a		0x5a	// Send empty byte, get six bytes back (23 1b 09 d8 37 c0)
-#define CMD_5b		0x5b	// Send empty byte, get six bytes back (00 21 00 14 00 01)
-//                                     (00 00 00 14 00 01)
-#define CMD_5c		0x5c	// Send empty byte, get six bytes back (13 88 00 46 20 00)
-//                                     (13 88 00 3c 15 00)
-#define CMD_5d		0x5d	// Send empty byte, get six bytes back (19 00 23 0C 02 0E)
-//                                     (14 14 14 0c 01 0e)
-#define CMD_5f		0x5f	// Send empty byte, get six bytes back (00 00 07 00 00 00)
-
 typedef struct deepsix_device_t {
     dc_device_t base;
     dc_iostream_t *iostream;
     unsigned char fingerprint[EXCURSION_HDR_SIZE];
 } deepsix_device_t;
 
-static const unsigned char endian_bit = 0x01;
+static const unsigned char ENDIAN_BIT = 0x01;
 
 static dc_status_t deepsix_device_set_fingerprint (dc_device_t *abstract, const unsigned char data[], unsigned int size);
 static dc_status_t deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void *userdata);
@@ -323,7 +294,7 @@ deepsix_recv_bulk(deepsix_device_t *device, unsigned short dive_number, unsigned
 
     get_profile.cmd = CMD_GROUP_LOGS;
     get_profile.sub_command = LOG_PROFILE;
-    get_profile.byte_order = endian_bit;
+    get_profile.byte_order = ENDIAN_BIT;
 
     while (len) {
         dc_status_t status;
@@ -407,6 +378,21 @@ deepsix_device_timesync(dc_device_t *abstract, const dc_datetime_t *datetime)
     dc_status_t status;
     size_t len;
 
+    /*
+     *     datetime->year = data[12] + 2000;
+    datetime->month = data[13];
+    datetime->day = data[14];
+    datetime->hour = data[15];
+    datetime->minute = data[16];
+    datetime->second = data[17];
+    datetime->timezone = DC_TIMEZONE_NONE;
+     */
+
+    deepsix_command_sentence time_sync;
+    time_sync.cmd = CMD_GROUP_SETTINGS;
+    time_sync.sub_command = CMD_SETTING_DATE;
+    time_sync.byte_order = ENDIAN_BIT;
+
     data[0] = bcd(datetime->year - 2000);
     data[1] = bcd(datetime->month);
     data[2] = bcd(datetime->day);
@@ -414,11 +400,15 @@ deepsix_device_timesync(dc_device_t *abstract, const dc_datetime_t *datetime)
     data[4] = bcd(datetime->minute);
     data[5] = bcd(datetime->second);
 
-    // Maybe also check that we received one zero byte (ack?)
-//    return deepsix_send_recv(device, CMD_SETTIME,
-//                             data, sizeof(data),
-//                             result, sizeof(result));
-    return -1;
+    memcpy(time_sync.data, &data, 6);
+    time_sync.data_len = 6;
+
+    unsigned char time_set_response[20];
+    unsigned char response_len;
+
+    status = deepsix_send_recv(device, &time_sync, time_set_response, &response_len, 20);
+
+    return status;
 }
 
 static dc_status_t
@@ -448,7 +438,7 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
 
     get_dive_info.cmd = CMD_GROUP_LOGS;
     get_dive_info.sub_command = LOG_INFO;
-    get_dive_info.byte_order = endian_bit;
+    get_dive_info.byte_order = ENDIAN_BIT;
     memcpy(get_dive_info.data, &nr, sizeof(nr));
     get_dive_info.data_len = sizeof(nr);
 
@@ -478,38 +468,11 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
     memcpy(profile, dive_info_bytes, EXCURSION_HDR_SIZE);
 
     status = deepsix_recv_bulk(device, nr, profile+EXCURSION_HDR_SIZE, profile_len);
-
-    //status = deepsix_send_recv(device, &get_dive_info, &dive_info_bytes, &result_size);
-//    status = deepsix_recv_bulk(device, RSP_DIVESTAT, 00, header, header_len);
-//    if (status != DC_STATUS_SUCCESS)
-//        return status;
     memset(header + header_len, 0, 256 - header_len);
-//
-//    /* The header is the fingerprint. If we've already seen this header, we're done */
+
+     /* The header is the fingerprint. If we've already seen this header, we're done */
 //    if (memcmp(header, device->fingerprint, sizeof (device->fingerprint)) == 0)
 //        return DC_STATUS_DONE;
-//
-//    // todo - add actual commands
-////    status = deepsix_send_recv(device,  CMD_GETPROFILE, 0, &nr, 1, profilebytes, sizeof(profilebytes));
-//    status = DC_STATUS_UNSUPPORTED;
-//    if (status != DC_STATUS_SUCCESS)
-//        return status;
-//    profile_len = (profilebytes[0] << 8) | profilebytes[1];
-//
-//    profile = malloc(256 + profile_len);
-//    if (!profile) {
-//        ERROR (device->base.context, "Insufficient buffer space available.");
-//        return DC_STATUS_NOMEMORY;
-//    }
-//
-//    // We make the dive data be 256 bytes of header, followed by the profile data
-//    memcpy(profile, header, 256);
-//
-//    // todo - update this
-//    status = deepsix_recv_bulk(device, RSP_DIVEPROF, 0, profile+256, profile_len);
-//    if (status != DC_STATUS_SUCCESS)
-//        return status;
-//
 
     char divehdr[25];
     sprintf(divehdr, "Dive #%2d header: ", nr);
@@ -541,10 +504,8 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     deepsix_command_sentence sentence;
     sentence.cmd = CMD_GROUP_INFO;
     sentence.sub_command = COMMAND_INFO_LAST_DIVE_LOG_INDEX;
-    sentence.byte_order = endian_bit;
-//    sentence.data_len = 2;
-//    // put the dive number into the data
-//    memcpy(sentence.data, &dive_number, 2);
+    sentence.byte_order = ENDIAN_BIT;
+
     array_uint16_le_set(sentence.data, dive_number);
     sentence.data_len = 2;
     char dive_number_buff[2];
