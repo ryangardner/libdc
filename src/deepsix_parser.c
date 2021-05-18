@@ -268,70 +268,111 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
     len -= EXCURSION_HDR_SIZE;
 
     int nonempty_sample_count = 0;
+
+    // the older firmware is parsed differently
+    int firmware4c = memcmp(deepsix->firmware_version, "D01-4C", 6);
     while (i < len) {
         dc_sample_value_t sample = {0};
-        char point_type = data[0];;
+        char point_type = data[0];
+        int near_end_of_data = (len - i <= 8);
 
-        if (point_type == 2) {
-            sample.time = (nonempty_sample_count)*deepsix->sample_interval;
-            if (callback) callback (DC_SAMPLE_TIME, sample, userdata);
-
+        if (firmware4c) {
+            if (point_type == 1) {
+                if (point_type != 2 && len - i > 8) {
+                    i++;
+                    continue;
+                }
+            }
             unsigned int pressure = array_uint16_le(data + 2);
-            unsigned int temp = array_uint16_le(data + 4);
+            unsigned int something_else = array_uint16_le(data + 2);
 
             sample.depth = pressure_to_depth(pressure);
             if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
 
-            sample.temperature = temp / 10.0;
-            if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
-            nonempty_sample_count++;
-            if (data[6] <= 0 || data[6] >= 5) {
-                data += 1;
-                i++;
-            }
-            else {
-                i += 6;
-                data += 6;
-            }
-
-            continue;
-        }
-        // not sure what this point type indicates, but the phone app skips 8 bytes for it
-        if (point_type == 1) {
-
-            if (data[8] <= 0 || data[8] >= 5) {
-                data += 1;
-                i++;
-            }
-            else {
+            if (something_else > 1300 ) {
+                if (near_end_of_data) {
+                    break;
+                }
                 i += 8;
-                data += 8;
+                if (data[8] > 0 && data[8] < 3) {
+                    continue;
+                }
+            } else {
+                if (something_else >= 10) {
+                    sample.temperature = something_else / 10.0;
+                    if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
+                }
+                if (near_end_of_data) {
+                    break;
+                }
+                else {
+                    i += 6;
+                    if (data[8] <= 0 || data[8] >= 3) {
+                        i+=1;
+                    }
+                }
+                continue;
             }
-            continue;
+
         }
-        if (point_type == 3) {
+        else {
+            if (point_type == 2) {
+                sample.time = (nonempty_sample_count) * deepsix->sample_interval;
+                if (callback) callback(DC_SAMPLE_TIME, sample, userdata);
 
-            i+=6;
-            data += 4;
+                unsigned int pressure = array_uint16_le(data + 2);
+                unsigned int temp = array_uint16_le(data + 4);
 
-            if (data[6] <= 0 || data[6] >= 5) {
-                data += 1;
-                i++;
+                sample.depth = pressure_to_depth(pressure);
+                if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
+
+                sample.temperature = temp / 10.0;
+                if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
+                nonempty_sample_count++;
+                if (data[6] <= 0 || data[6] >= 5) {
+                    data += 1;
+                    i++;
+                } else {
+                    i += 6;
+                    data += 6;
+                }
+
+                continue;
             }
-            else {
+            // not sure what this point type indicates, but the phone app skips 8 bytes for it
+            if (point_type == 1) {
+
+                if (data[8] <= 0 || data[8] >= 5) {
+                    data += 1;
+                    i++;
+                } else {
+                    i += 8;
+                    data += 8;
+                }
+                continue;
+            }
+            if (point_type == 3) {
+
                 i += 6;
-                data += 6;
+                data += 4;
+
+                if (data[6] <= 0 || data[6] >= 5) {
+                    data += 1;
+                    i++;
+                } else {
+                    i += 6;
+                    data += 6;
+                }
+                continue;
             }
-            continue;
-        }
-        if (point_type != 3 && point_type != 4) {
-            if (data[8] <= 0 || data[8] >= 5) {
-                data += 1;
-                i++;
-            }
-            else {
-                i += 8;
-                data += 8;
+            if (point_type != 3 && point_type != 4) {
+                if (data[8] <= 0 || data[8] >= 5) {
+                    data += 1;
+                    i++;
+                } else {
+                    i += 8;
+                    data += 8;
+                }
             }
         }
 
