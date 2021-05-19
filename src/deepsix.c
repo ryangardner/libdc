@@ -40,6 +40,7 @@
 
 #define CMD_GROUP_SETTINGS  0xB0 // settings
 #define CMD_SETTING_DATE    0x01 // date setting
+#define CMD_SETTING_TIME    0x03 // time setting
 
 // sub commands for the log
 #define LOG_INFO    0x02
@@ -359,55 +360,36 @@ deepsix_device_set_fingerprint (dc_device_t *abstract, const unsigned char data[
     return DC_STATUS_SUCCESS;
 }
 
-static unsigned char bcd(int val)
-{
-    if (val >= 0 && val < 100) {
-        int high = val / 10;
-        int low = val % 10;
-        return (high << 4) | low;
-    }
-    return 0;
-}
-
-// todo: is this needed? or just for the comsiq?
 static dc_status_t
 deepsix_device_timesync(dc_device_t *abstract, const dc_datetime_t *datetime)
 {
     deepsix_device_t *device = (deepsix_device_t *)abstract;
-    unsigned char result[1], data[6];
+    unsigned char result[1], date[3], time[3];
     dc_status_t status;
     size_t len;
 
-    /*
-     *     datetime->year = data[12] + 2000;
-    datetime->month = data[13];
-    datetime->day = data[14];
-    datetime->hour = data[15];
-    datetime->minute = data[16];
-    datetime->second = data[17];
-    datetime->timezone = DC_TIMEZONE_NONE;
-     */
+    // time and date are set in two separate commands
+    deepsix_command_sentence date_sync, time_sync;
+    date_sync.cmd = CMD_GROUP_SETTINGS;
+    date_sync.sub_command = CMD_SETTING_DATE;
+    date_sync.byte_order = ENDIAN_BIT;
+    date_sync.data[0] = (unsigned char) (datetime->year - 2000);
+    date_sync.data[1] = (unsigned char) datetime->month;
+    date_sync.data[2] = (unsigned char) datetime->day;
+    date_sync.data_len = 3;
 
-    deepsix_command_sentence time_sync;
     time_sync.cmd = CMD_GROUP_SETTINGS;
-    time_sync.sub_command = CMD_SETTING_DATE;
+    time_sync.sub_command = CMD_SETTING_TIME;
     time_sync.byte_order = ENDIAN_BIT;
+    time_sync.data[0] = (unsigned char) datetime->hour;
+    time_sync.data[1] = (unsigned char) datetime->minute;
+    time_sync.data[2] = (unsigned char) datetime->second;
+    time_sync.data_len = 3;
 
-    data[0] = bcd(datetime->year - 2000);
-    data[1] = bcd(datetime->month);
-    data[2] = bcd(datetime->day);
-    data[3] = bcd(datetime->hour);
-    data[4] = bcd(datetime->minute);
-    data[5] = bcd(datetime->second);
-
-    memcpy(time_sync.data, &data, 6);
-    time_sync.data_len = 6;
-
-    unsigned char time_set_response[20];
-    unsigned char response_len;
-
-    status = deepsix_send_recv(device, &time_sync, time_set_response, &response_len, 20);
-
+    status = deepsix_send_cmd(device, &date_sync);
+    if (status == DC_STATUS_SUCCESS) {
+        status = deepsix_send_cmd(device, &time_sync);
+    }
     return status;
 }
 
