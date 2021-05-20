@@ -47,6 +47,8 @@ typedef struct deepsix_parser_t {
     // 20 sec for scuba, 1 sec for freedives
     int sample_interval;
 
+    // surface pressure
+    unsigned int surface_atm;
     char firmware_version[6];
 
     // Common fields
@@ -89,7 +91,7 @@ deep6_parser_create (dc_parser_t **out, dc_context_t *context)
 }
 
 static double
-pressure_to_depth(unsigned int mbar)
+pressure_to_depth(unsigned int mbar, unsigned int surface_pressure)
 {
     // Specific weight of seawater (millibar to cm)
     const double specific_weight = 1.024 * 0.980665;
@@ -123,11 +125,14 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
     int profile_data_len = array_uint32_le(&data[8]);
     memcpy(&(deepsix->firmware_version), &data[48], 6);
 
+    // surface pressure
+    deepsix->surface_atm = array_uint32_le(&hdr[54]);
+
     // LE32 at 20 is the dive duration in ms
     divetime = array_uint32_le(&hdr[20]);
-    DC_ASSIGN_FIELD(deepsix->cache, DIVETIME, divetime);
     // SCUBA - divetime in ms for everything
-    //divetime /= 1000;
+    DC_ASSIGN_FIELD(deepsix->cache, DIVETIME, divetime);
+    // divetime /= 1000;
     // sample rate is in seconds
     deepsix->sample_interval = array_uint32_le(&hdr[24]);
     maxpressure = array_uint32_le(&hdr[28]);
@@ -161,7 +166,7 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
     }
 
     DC_ASSIGN_FIELD(deepsix->cache, DIVETIME, divetime);
-    DC_ASSIGN_FIELD(deepsix->cache, MAXDEPTH, pressure_to_depth(maxpressure));
+    DC_ASSIGN_FIELD(deepsix->cache, MAXDEPTH, pressure_to_depth(maxpressure, deepsix->surface_atm));
 
 
     return DC_STATUS_SUCCESS;
@@ -224,8 +229,10 @@ deepsix_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned 
 
     switch (type) {
         case DC_FIELD_DIVETIME:
+            //return array_uint32_le(&(deepsix->base.data[20]));
             return DC_FIELD_VALUE(deepsix->cache, value, DIVETIME);
         case DC_FIELD_MAXDEPTH:
+            //return array_uint32_le(&(deepsix->base.data[28]));
             return DC_FIELD_VALUE(deepsix->cache, value, MAXDEPTH);
         case DC_FIELD_AVGDEPTH:
             return DC_FIELD_VALUE(deepsix->cache, value, AVGDEPTH);
@@ -237,9 +244,10 @@ deepsix_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned 
                 return DC_STATUS_UNSUPPORTED;
             return DC_FIELD_INDEX(deepsix->cache, value, GASMIX, flags);
         case DC_FIELD_SALINITY:
-            return DC_FIELD_VALUE(deepsix->cache, value, SALINITY);
+            return DC_STATUS_UNSUPPORTED;
         case DC_FIELD_ATMOSPHERIC:
-            return DC_FIELD_VALUE(deepsix->cache, value, ATMOSPHERIC);
+            return array_uint32_le(&(deepsix->base.data[28]));
+            //return DC_FIELD_VALUE(deepsix->cache, value, ATMOSPHERIC);
         case DC_FIELD_DIVEMODE:
             return DC_FIELD_VALUE(deepsix->cache, value, DIVEMODE);
         case DC_FIELD_TANK:
@@ -290,7 +298,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             sample.time = (nonempty_sample_count) * deepsix->sample_interval;
             if (callback) callback(DC_SAMPLE_TIME, sample, userdata);
 
-            sample.depth = pressure_to_depth(pressure);
+            sample.depth = pressure_to_depth(pressure, deepsix->surface_atm);
             if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
             nonempty_sample_count++;
 
@@ -328,7 +336,7 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
                 unsigned int pressure = array_uint16_le(data + 2);
                 unsigned int temp = array_uint16_le(data + 4);
 
-                sample.depth = pressure_to_depth(pressure);
+                sample.depth = pressure_to_depth(pressure, deepsix->surface_atm);
                 if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
 
                 sample.temperature = temp / 10.0;
@@ -378,6 +386,19 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
                         continue;
                     }
                 }
+                if (point_type == 4) {
+                    if (near_end_of_data) {
+                        break;
+                    } else {
+                        i += 8;
+                        data += 8;
+                        if (data[i] > 0 && data[i] < 5) {
+                            continue;;
+                        }
+                    }
+                }
+            }
+            else {
                 if (near_end_of_data) {
                     break;
                 }
