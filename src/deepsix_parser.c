@@ -125,8 +125,9 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
 
     // LE32 at 20 is the dive duration in ms
     divetime = array_uint32_le(&hdr[20]);
+    DC_ASSIGN_FIELD(deepsix->cache, DIVETIME, divetime);
     // SCUBA - divetime in ms for everything
-    divetime /= 1000;
+    //divetime /= 1000;
     // sample rate is in seconds
     deepsix->sample_interval = array_uint32_le(&hdr[24]);
     maxpressure = array_uint32_le(&hdr[28]);
@@ -255,7 +256,7 @@ static dc_status_t
 deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t callback, void *userdata)
 {
     deepsix_parser_t *deepsix = (deepsix_parser_t *) abstract;
-    const unsigned char *data = deepsix->base.data+EXCURSION_HDR_SIZE;
+    const unsigned char *data = deepsix->base.data;
     int len = deepsix->base.size, i = 0;
 
     deepsix->callback = callback;
@@ -345,7 +346,6 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             }
             // not sure what this point type indicates, but the phone app skips 8 bytes for it
             if (point_type == 1) {
-
                 if (data[8] <= 0 || data[8] >= 5) {
                     data += 1;
                     i++;
@@ -355,29 +355,42 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
                 }
                 continue;
             }
-            if (point_type == 3) {
-
-                i += 6;
-                data += 4;
-
-                if (data[6] <= 0 || data[6] >= 5) {
-                    data += 1;
-                    i++;
-                } else {
+//            if (point_type == 3) {
+//                i += 6;
+//                data += 4;
+//
+//                if (data[6] <= 0 || data[6] >= 5) {
+//                    data += 1;
+//                    i++;
+//                } else {
+//                    i += 6;
+//                    data += 6;
+//                }
+//                continue;
+//            }
+            if (point_type != 3) {
+                if (point_type != 4) {
+                    if (near_end_of_data) {
+                        break;
+                    } else {
+                        i++;
+                        data++;
+                        continue;
+                    }
+                }
+                if (near_end_of_data) {
+                    break;
+                }
+                else {
                     i += 6;
                     data += 6;
-                }
-                continue;
-            }
-            if (point_type != 3 && point_type != 4) {
-                if (data[8] <= 0 || data[8] >= 5) {
-                    data += 1;
-                    i++;
-                } else {
-                    i += 8;
-                    data += 8;
+                    if (data[6] > 0 && data[6] < 5) {
+                        continue;
+                    }
                 }
             }
+           data++;
+           i++;
         }
 
     }
