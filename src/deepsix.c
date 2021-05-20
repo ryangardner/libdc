@@ -467,7 +467,7 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
     sprintf(diveprofile, "Dive #%2d profile: ", nr);
     HEXDUMP(device->base.context, DC_LOGLEVEL_INFO, diveprofile, (const unsigned char *) profile+EXCURSION_HDR_SIZE, profile_len);
     char divecombined[30];
-    sprintf(diveprofile, "Dive #%2d combined: ", nr);
+    sprintf(divecombined, "Dive #%2d combined: ", nr);
     HEXDUMP(device->base.context, DC_LOGLEVEL_INFO, divecombined, (const unsigned char*)profile, dive_info_len+EXCURSION_SERIAL_NUMBER_LEN+profile_len);
 
     header_len = 0;
@@ -492,7 +492,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     unsigned short dive_number;
     get_last_dive_index(device, &dive_number);
     char serial_number[12];
-    get_serial_number(device, (char *) &serial_number);
+    get_serial_number(device, serial_number);
 
     if (status != DC_STATUS_SUCCESS)
         return status;
@@ -554,6 +554,6 @@ get_serial_number(deepsix_device_t *device, char* serial_number) {
     get_serial_number.data_len = 0;
     // get the last dive number
     unsigned char data_len;
-    status = deepsix_send_recv(device, &get_serial_number, &serial_number, &data_len, 12);
+    status = deepsix_send_recv(device, &get_serial_number, serial_number, &data_len, 12);
     return status;
 }
