@@ -255,7 +255,7 @@ static dc_status_t
 deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t callback, void *userdata)
 {
     deepsix_parser_t *deepsix = (deepsix_parser_t *) abstract;
-    const unsigned char *data = deepsix->base.data;
+    const unsigned char *data = deepsix->base.data+EXCURSION_HDR_SIZE;
     int len = deepsix->base.size, i = 0;
 
     deepsix->callback = callback;
@@ -286,8 +286,12 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
             unsigned int pressure = array_uint16_le(data + 2);
             unsigned int something_else = array_uint16_le(data + 2);
 
+            sample.time = (nonempty_sample_count) * deepsix->sample_interval;
+            if (callback) callback(DC_SAMPLE_TIME, sample, userdata);
+
             sample.depth = pressure_to_depth(pressure);
             if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
+            nonempty_sample_count++;
 
             if (something_else > 1300 ) {
                 if (near_end_of_data) {
