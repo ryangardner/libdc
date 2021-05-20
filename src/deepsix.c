@@ -63,6 +63,9 @@ static dc_status_t deepsix_device_foreach (dc_device_t *abstract, dc_dive_callba
 static dc_status_t deepsix_device_timesync(dc_device_t *abstract, const dc_datetime_t *datetime);
 static dc_status_t deepsix_device_close (dc_device_t *abstract);
 
+static dc_status_t get_last_dive_index(deepsix_device_t *device, unsigned short *dive_number);
+static dc_status_t get_serial_number(deepsix_device_t *device, char* serial_number);
+
 static const dc_device_vtable_t deepsix_device_vtable = {
         sizeof(deepsix_device_t),
         DC_FAMILY_DEEP6,
@@ -404,7 +407,7 @@ deepsix_device_close (dc_device_t *abstract)
 static const char zero[MAX_DATA];
 
 static dc_status_t
-deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callback_t callback, void *userdata)
+deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callback_t callback, const char* serial_number, void *userdata)
 {
     unsigned char header_len;
     char header[256];
@@ -441,15 +444,16 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
     unsigned int ending_offset = array_uint32_le(&dive_info_bytes[44]);
 
     profile_len = ending_offset - starting_offset;
-    profile = malloc(EXCURSION_HDR_SIZE + profile_len);
+    profile = malloc(EXCURSION_HDR_SIZE + EXCURSION_SERIAL_NUMBER_LEN + profile_len);
     if (!profile) {
         ERROR (device->base.context, "Insufficient buffer space available.");
         return DC_STATUS_NOMEMORY;
     }
     // the dive profile is the info part (HDR_SIZE bytes) and then the actual profile
     memcpy(profile, dive_info_bytes, EXCURSION_HDR_SIZE);
+    memcpy(profile+EXCURSION_HDR_SIZE, serial_number, EXCURSION_SERIAL_NUMBER_LEN);
 
-    status = deepsix_recv_bulk(device, nr, profile+EXCURSION_HDR_SIZE, profile_len);
+    status = deepsix_recv_bulk(device, nr, profile+EXCURSION_HDR_SIZE+EXCURSION_SERIAL_NUMBER_LEN, profile_len);
     memset(header + header_len, 0, 256 - header_len);
 
      /* The header is the fingerprint. If we've already seen this header, we're done */
@@ -462,11 +466,14 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
     char diveprofile[30];
     sprintf(diveprofile, "Dive #%2d profile: ", nr);
     HEXDUMP(device->base.context, DC_LOGLEVEL_INFO, diveprofile, (const unsigned char *) profile+EXCURSION_HDR_SIZE, profile_len);
+    char divecombined[30];
+    sprintf(diveprofile, "Dive #%2d combined: ", nr);
+    HEXDUMP(device->base.context, DC_LOGLEVEL_INFO, divecombined, (const unsigned char*)profile, dive_info_len+EXCURSION_SERIAL_NUMBER_LEN+profile_len);
 
     header_len = 0;
     if (callback) {
         // typedef int (*dc_dive_callback_t) (const unsigned char *data, unsigned int size, const unsigned char *fingerprint, unsigned int fsize, void *userdata);
-        if (!callback(profile, profile_len+EXCURSION_HDR_SIZE, header, header_len, userdata))
+        if (!callback(profile, profile_len+EXCURSION_HDR_SIZE+EXCURSION_SERIAL_NUMBER_LEN, header, header_len, userdata))
             return DC_STATUS_DONE;
     }
     free(profile);
@@ -482,19 +489,10 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     dc_status_t status;
     unsigned short i;
 
-    unsigned short dive_number = 0;
-    deepsix_command_sentence sentence;
-    sentence.cmd = CMD_GROUP_INFO;
-    sentence.sub_command = COMMAND_INFO_LAST_DIVE_LOG_INDEX;
-    sentence.byte_order = ENDIAN_BIT;
-
-    array_uint16_le_set(sentence.data, dive_number);
-    sentence.data_len = 2;
-    char dive_number_buff[2];
-    // get the last dive number
-    unsigned char data_len;
-    status = deepsix_send_recv(device, &sentence, &dive_number_buff, &data_len, MAX_DATA);
-    dive_number = array_uint16_le(dive_number_buff);
+    unsigned short dive_number;
+    get_last_dive_index(device, &dive_number);
+    char serial_number[12];
+    get_serial_number(device, (char *) &serial_number);
 
     if (status != DC_STATUS_SUCCESS)
         return status;
@@ -512,7 +510,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
             break;
         }
 
-        status = deepsix_download_dive(device, i, callback, userdata);
+        status = deepsix_download_dive(device, i, callback, serial_number, userdata);
         switch (status) {
             case DC_STATUS_DONE:
                 i = nrdives;
@@ -527,4 +525,35 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     }
 
     return DC_STATUS_SUCCESS;
+}
+
+static dc_status_t
+get_last_dive_index(deepsix_device_t *device, unsigned short *dive_number) {
+    dc_status_t status;
+    deepsix_command_sentence get_last_dive_cmd;
+    get_last_dive_cmd.cmd = CMD_GROUP_INFO;
+    get_last_dive_cmd.sub_command = COMMAND_INFO_LAST_DIVE_LOG_INDEX;
+    get_last_dive_cmd.byte_order = ENDIAN_BIT;
+
+    array_uint16_le_set(get_last_dive_cmd.data, (*dive_number));
+    get_last_dive_cmd.data_len = 2;
+    char dive_number_buff[2];
+    // get the last dive number
+    unsigned char data_len;
+    status = deepsix_send_recv(device, &get_last_dive_cmd, &dive_number_buff, &data_len, MAX_DATA);
+    (*dive_number) = array_uint16_le(dive_number_buff);
+}
+
+static dc_status_t
+get_serial_number(deepsix_device_t *device, char* serial_number) {
+    dc_status_t status;
+    deepsix_command_sentence get_serial_number;
+    get_serial_number.cmd = CMD_GROUP_INFO;
+    get_serial_number.sub_command = COMMAND_INFO_SERIAL_NUMBER;
+    get_serial_number.byte_order = ENDIAN_BIT;
+    get_serial_number.data_len = 0;
+    // get the last dive number
+    unsigned char data_len;
+    status = deepsix_send_recv(device, &get_serial_number, &serial_number, &data_len, 12);
+    return status;
 }

@@ -19,8 +19,6 @@
  * MA 02110-1301 USA
  */
 
-// TODO - implement this. It's LITERALLY a copy/paste of deepblue_parser.c with a find / replace on the names
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -46,6 +44,8 @@ typedef struct deepsix_parser_t {
 
     // 20 sec for scuba, 1 sec for freedives
     int sample_interval;
+
+    char divetype;
 
     // surface pressure
     unsigned int surface_atm;
@@ -119,8 +119,11 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
     deepsix->userdata = NULL;
     memset(&deepsix->cache, 0, sizeof(deepsix->cache));
 
-    // dive type - scuba = 0
-    int divetype = array_uint32_le(&hdr[4]);
+    // dive type - scuba = 0.
+    // The use of an unsigned 32-bit integer certainly leaves them room to add a few more
+    // modes, but we can safely cast this down to a char and not feel bad since there are only
+    // four modes we care about
+    deepsix->divetype = (char) array_uint32_le(&hdr[4]);
 
     int profile_data_len = array_uint32_le(&data[8]);
     memcpy(&(deepsix->firmware_version), &data[48], 6);
@@ -128,73 +131,42 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
     // surface pressure
     deepsix->surface_atm = array_uint32_le(&hdr[54]);
 
-    // LE32 at 20 is the dive duration in ms
+    // LE32 at 20 is the dive duration in seconds
     divetime = array_uint32_le(&hdr[20]);
-    // SCUBA - divetime in ms for everything
-    DC_ASSIGN_FIELD(deepsix->cache, DIVETIME, divetime);
-    // divetime /= 1000;
-    // sample rate is in seconds
     deepsix->sample_interval = array_uint32_le(&hdr[24]);
     maxpressure = array_uint32_le(&hdr[28]);
 //    lowest_water_temp = array_uint32_le(hdr[32]);
 //    average_pressure = array_uint32_le(hdr[36]);
 
 
-    // Byte at 2 is 'activity type' (2 = scuba, 3 = gauge, 4 = freedive)
-    // Byte at 3 is O2 percentage
-    switch (divetype) {
-        case 0:
-            // TODO: is the 02 in the log info somewhere? I can't find it - Maybe O2Ratio?
-            gasmix.oxygen = 21 / 100.0;
-            DC_ASSIGN_IDX(deepsix->cache, GASMIX, 0, gasmix);
-            DC_ASSIGN_FIELD(deepsix->cache, GASMIX_COUNT, 1);
-            DC_ASSIGN_FIELD(deepsix->cache, DIVEMODE, DC_DIVEMODE_OC);
-            break;
-        //todo - validate the other modes
-        case 1:
-            // GAUGE - divetime in minutes
-            DC_ASSIGN_FIELD(deepsix->cache, DIVEMODE, DC_DIVEMODE_GAUGE);
-            break;
-        case 2:
-            // FREEDIVE - divetime in seconds
-            DC_ASSIGN_FIELD(deepsix->cache, DIVEMODE, DC_DIVEMODE_FREEDIVE);
-            deepsix->sample_interval = 1;
-            break;
-        default:
-            ERROR (abstract->context, "DeepSix: unknown activity type '%02x'", data[2]);
-            break;
-    }
-
-    DC_ASSIGN_FIELD(deepsix->cache, DIVETIME, divetime);
-    DC_ASSIGN_FIELD(deepsix->cache, MAXDEPTH, pressure_to_depth(maxpressure, deepsix->surface_atm));
-
-
+//    // Byte at 2 is 'activity type' (2 = scuba, 3 = gauge, 4 = freedive) ??
+//    // Byte at 3 is O2 percentage
+//    switch (deepsix->divetype) {
+//        case 0:
+//            // TODO: is the 02 in the log info somewhere? I can't find it - Maybe O2Ratio?
+////            gasmix.oxygen = 21 / 100.0;
+////            DC_ASSIGN_IDX(deepsix->cache, GASMIX, 0, gasmix);
+////            DC_ASSIGN_FIELD(deepsix->cache, GASMIX_COUNT, 1);
+//            DC_ASSIGN_FIELD(deepsix->cache, DIVEMODE, DC_DIVEMODE_OC);
+//            break;
+//        //todo - validate the other modes
+//        case 1:
+//            // GAUGE - divetime in minutes
+//            DC_ASSIGN_FIELD(deepsix->cache, DIVEMODE, DC_DIVEMODE_GAUGE);
+//            break;
+//        case 2:
+//            // FREEDIVE - divetime in seconds
+//            DC_ASSIGN_FIELD(deepsix->cache, DIVEMODE, DC_DIVEMODE_FREEDIVE);
+//            deepsix->sample_interval = 1;
+//            break;
+//        default:
+//            ERROR (abstract->context, "DeepSix: unknown activity type '%02x'", data[2]);
+//            break;
+//    }
+//    DC_ASSIGN_FIELD(deepsix->cache, MAXDEPTH, pressure_to_depth(maxpressure, deepsix->surface_atm));
     return DC_STATUS_SUCCESS;
 }
 
-// The layout of the header in the 'data' is
-//  0: LE16 dive number
-//  2: dive type byte?
-//  3: O2 percentage byte
-//  4: unknown
-//  5: unknown
-//  6: LE16 year
-//  8: day of month
-//  9: month
-// 10: minute
-// 11: hour
-// 12: LE16 dive time
-// 14: LE16 ??
-// 16: LE16 surface pressure?
-// 18: LE16 ??
-// 20: LE16 ??
-// 22: LE16 max depth pressure
-// 24: LE16 water temp
-// 26: LE16 ??
-// 28: LE16 ??
-// 30: LE16 ??
-// 32: LE16 ??
-// 34: LE16 ??
 static dc_status_t
 deepsix_parser_get_datetime (dc_parser_t *abstract, dc_datetime_t *datetime)
 {
@@ -220,40 +192,62 @@ deepsix_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned 
 {
     deepsix_parser_t *deepsix = (deepsix_parser_t *) abstract;
 
+//    dc_gasmix_t *gasmix = (dc_gasmix_t *) value;
+    dc_field_string_t *string = (dc_field_string_t *) value;
+
+    char string_buf[EXCURSION_SERIAL_NUMBER_LEN + 1];
+
     if (!value)
         return DC_STATUS_INVALIDARGS;
 
-    /* This whole sequence should be standardized */
-    if (!(deepsix->cache.initialized & (1 << type)))
-        return DC_STATUS_UNSUPPORTED;
-
     switch (type) {
         case DC_FIELD_DIVETIME:
-            //return array_uint32_le(&(deepsix->base.data[20]));
-            return DC_FIELD_VALUE(deepsix->cache, value, DIVETIME);
+            *((unsigned int *) value) = array_uint32_le(deepsix->base.data + 20);
+            break;
         case DC_FIELD_MAXDEPTH:
-            //return array_uint32_le(&(deepsix->base.data[28]));
-            return DC_FIELD_VALUE(deepsix->cache, value, MAXDEPTH);
-        case DC_FIELD_AVGDEPTH:
-            return DC_FIELD_VALUE(deepsix->cache, value, AVGDEPTH);
-        case DC_FIELD_GASMIX_COUNT:
-        case DC_FIELD_TANK_COUNT:
-            return DC_FIELD_VALUE(deepsix->cache, value, GASMIX_COUNT);
-        case DC_FIELD_GASMIX:
-            if (flags >= MAXGASES)
-                return DC_STATUS_UNSUPPORTED;
-            return DC_FIELD_INDEX(deepsix->cache, value, GASMIX, flags);
-        case DC_FIELD_SALINITY:
-            return DC_STATUS_UNSUPPORTED;
+            *((double *) value) = pressure_to_depth(array_uint32_le(deepsix->base.data + 28), deepsix->surface_atm);
+            break;
+//        case DC_FIELD_GASMIX_COUNT:
+//            return DC_STATUS_UNSUPPORTED;
+//        case DC_FIELD_TANK_COUNT:
+//            return DC_STATUS_UNSUPPORTED;
+//        case DC_FIELD_GASMIX:
+//            return DC_STATUS_UNSUPPORTED;
+//        case DC_FIELD_SALINITY:
+//            return DC_STATUS_UNSUPPORTED;
         case DC_FIELD_ATMOSPHERIC:
-            return array_uint32_le(&(deepsix->base.data[28]));
-            //return DC_FIELD_VALUE(deepsix->cache, value, ATMOSPHERIC);
+            *((unsigned int *) value) = deepsix->surface_atm;
+            break;
         case DC_FIELD_DIVEMODE:
-            return DC_FIELD_VALUE(deepsix->cache, value, DIVEMODE);
-        case DC_FIELD_TANK:
-            return DC_STATUS_UNSUPPORTED;
+            switch(array_uint32_le(deepsix->base.data + 4)) {
+                case 0:
+                    *((dc_divemode_t *) value) = DC_DIVEMODE_OC;
+                    break;
+                case 1:
+                    *((dc_divemode_t *) value) = DC_DIVEMODE_GAUGE;
+                    break;
+                case 2:
+                    *((dc_divemode_t *) value) = DC_DIVEMODE_FREEDIVE;
+                    break;
+                default:
+                    return DC_STATUS_UNSUPPORTED;
+            }
+            break;
         case DC_FIELD_STRING:
-            return dc_field_get_string(&deepsix->cache, flags, (dc_field_string_t *)value);
+            switch (flags) {
+                case 0: /* serial */
+                    string->desc = "Serial";
+                    snprintf(string_buf, EXCURSION_SERIAL_NUMBER_LEN + 1, "%s", deepsix->base.data + EXCURSION_HDR_SIZE);
+                    break;
+                case 1: /* Firmware version */
+                    string->desc = "Firmware";
+                    snprintf(string_buf, 7, "%s", deepsix->firmware_version);
+                    break;
+                default:
+                    return DC_STATUS_UNSUPPORTED;
+            }
+            string->value = strdup(string_buf);
+            break;
         default:
             return DC_STATUS_UNSUPPORTED;
     }
