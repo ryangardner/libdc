@@ -28,7 +28,6 @@
 #include "context-private.h"
 #include "parser-private.h"
 #include "array.h"
-#include "field-cache.h"
 
 #define C_ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
@@ -51,8 +50,6 @@ typedef struct deepsix_parser_t {
     unsigned int surface_atm;
     char firmware_version[6];
 
-    // Common fields
-    struct dc_field_cache cache;
 } deepsix_parser_t;
 
 static dc_status_t deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsigned int size);
@@ -117,7 +114,6 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
 
     deepsix->callback = NULL;
     deepsix->userdata = NULL;
-    memset(&deepsix->cache, 0, sizeof(deepsix->cache));
 
     // dive type - scuba = 0.
     // The use of an unsigned 32-bit integer certainly leaves them room to add a few more
@@ -129,7 +125,7 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
     memcpy(&(deepsix->firmware_version), &data[48], 6);
 
     // surface pressure
-    deepsix->surface_atm = array_uint32_le(&hdr[54]);
+    deepsix->surface_atm = array_uint32_le(&hdr[56]);
 
     // LE32 at 20 is the dive duration in seconds
     divetime = array_uint32_le(&hdr[20]);
@@ -207,16 +203,11 @@ deepsix_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned 
         case DC_FIELD_MAXDEPTH:
             *((double *) value) = pressure_to_depth(array_uint32_le(deepsix->base.data + 28), deepsix->surface_atm);
             break;
-//        case DC_FIELD_GASMIX_COUNT:
-//            return DC_STATUS_UNSUPPORTED;
-//        case DC_FIELD_TANK_COUNT:
-//            return DC_STATUS_UNSUPPORTED;
-//        case DC_FIELD_GASMIX:
-//            return DC_STATUS_UNSUPPORTED;
-//        case DC_FIELD_SALINITY:
-//            return DC_STATUS_UNSUPPORTED;
+        case DC_FIELD_TEMPERATURE_MINIMUM:
+            *((double *) value) = ((double)array_uint32_le(deepsix->base.data + 32))/10;
+            break;
         case DC_FIELD_ATMOSPHERIC:
-            *((unsigned int *) value) = deepsix->surface_atm;
+            *((double *) value) = (double) deepsix->surface_atm / 1000;
             break;
         case DC_FIELD_DIVEMODE:
             switch(array_uint32_le(deepsix->base.data + 4)) {
@@ -265,10 +256,10 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
     deepsix->userdata = userdata;
 
     // Skip the header information
-    if (len < EXCURSION_HDR_SIZE)
+    if (len < EXCURSION_HDR_SIZE+EXCURSION_SERIAL_NUMBER_LEN)
         return DC_STATUS_IO;
-    data += EXCURSION_HDR_SIZE;
-    len -= EXCURSION_HDR_SIZE;
+    data += EXCURSION_HDR_SIZE+EXCURSION_SERIAL_NUMBER_LEN;
+    len -= EXCURSION_HDR_SIZE+EXCURSION_SERIAL_NUMBER_LEN;
 
     int nonempty_sample_count = 0;
 
@@ -280,47 +271,64 @@ deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t call
         int near_end_of_data = (len - i <= 8);
 
         if (firmware4c == 0) {
-            if (point_type == 1) {
-                if (point_type != 2 && len - i > 8) {
-                    i++;
-                    continue;
+            if (point_type != 1) {
+                if (point_type != 2) {
+                    if (near_end_of_data) {
+                        break;
+                    } else {
+                        i++;
+                        data++;
+                        continue;;
+                    }
                 }
-            }
-            unsigned int pressure = array_uint16_le(data + 2);
-            unsigned int something_else = array_uint16_le(data + 2);
+                unsigned int pressure = array_uint16_le(data + 2);
+                unsigned int something_else = array_uint16_le(data + 4);
 
-            sample.time = (nonempty_sample_count) * deepsix->sample_interval;
-            if (callback) callback(DC_SAMPLE_TIME, sample, userdata);
+                sample.time = (nonempty_sample_count) * deepsix->sample_interval;
+                if (callback) callback(DC_SAMPLE_TIME, sample, userdata);
 
-            sample.depth = pressure_to_depth(pressure, deepsix->surface_atm);
-            if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
-            nonempty_sample_count++;
+                sample.depth = pressure_to_depth(pressure, deepsix->surface_atm);
+                if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
+                nonempty_sample_count++;
 
-            if (something_else > 1300 ) {
-                if (near_end_of_data) {
-                    break;
-                }
-                i += 8;
-                if (data[8] > 0 && data[8] < 3) {
+                if (something_else > 1300) {
+                    if (near_end_of_data) {
+                        break;
+                    }
+                    if (data[8] > 0 && data[8] < 3) {
+                        i += 8;
+                        data += 8;
+                        continue;
+                    }
+                } else {
+                    if (something_else >= 10) {
+                        sample.temperature = something_else / 10.0;
+                        if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
+                    }
+                    if (near_end_of_data) {
+                        break;
+                    } else {
+                        i += 6;
+                        data += 6;
+                        if (data[0] <= 0 || data[0] >= 3) {
+                            i += 1;
+                            data += 1;
+                        }
+                    }
                     continue;
                 }
             } else {
-                if (something_else >= 10) {
-                    sample.temperature = something_else / 10.0;
-                    if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
-                }
                 if (near_end_of_data) {
                     break;
                 }
-                else {
-                    i += 6;
-                    if (data[8] <= 0 || data[8] >= 3) {
-                        i+=1;
-                    }
+                if (data[8] > 0 && data[8] < 3) {
+                    data += 8;
+                    i += 8;
+                    continue;
                 }
-                continue;
             }
-
+            data+=1;
+            i+=1;
         }
         else {
             if (point_type == 2) {
