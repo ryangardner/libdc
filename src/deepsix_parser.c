@@ -94,11 +94,12 @@ pressure_to_depth(unsigned int mbar, unsigned int surface_pressure)
     const double specific_weight = 1.024 * 0.980665;
 
     // Absolute pressure, subtract surface pressure
-    if (mbar < 1013)
+    if (mbar < surface_pressure)
         return 0.0;
-    mbar -= 1013;
+    mbar -= surface_pressure;
     return mbar / specific_weight / 100.0;
 }
+
 
 static dc_status_t
 deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsigned int size)

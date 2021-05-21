@@ -210,18 +210,6 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
     if (status != DC_STATUS_SUCCESS)
         return status;
 
-    // deepsix_recv_line() always zero-terminates the result
-    // if it returned success, and has removed the final newline.
-//    len = strlen(buffer);
-//    HEXDUMP(device->base.context, DC_LOGLEVEL_DEBUG, "rcv", buffer, len);
-
-    // A valid reply should always be at least 7 characters: the
-    // initial '$' and the three header HEX bytes.
-//    if (len < 8 || buffer[0] != '$') {
-//        ERROR(device->base.context, "Invalid DeepSix reply packet");
-//        return DC_STATUS_IO;
-//    }
-
     cmd = response.cmd;
     csum = response.csum;
     ndata = response.data_len;
@@ -229,33 +217,6 @@ deepsix_recv_data(deepsix_device_t *device, const unsigned char expected, const 
         ERROR(device->base.context, "non-hex DeepSix reply packet header");
         return DC_STATUS_IO;
     }
-
-//    // Verify the data length: it's the size of the HEX data,
-//    // and should also match the line length we got (the 7
-//    // is for the header data we already decoded above).
-//    if ((ndata & 1) || ndata != len - 7) {
-//        ERROR(device->base.context, "DeepSix reply packet data length does not match (claimed %d, got %d)", ndata, len-7);
-//        return DC_STATUS_IO;
-//    }
-//
-//    if (ndata >> 1 > size) {
-//        ERROR(device->base.context, "DeepSix reply packet too big for buffer (ndata=%d, size=%zu)", ndata, size);
-//        return DC_STATUS_IO;
-//    }
-
-//    csum += response.cmd + response.sub_command + response.byte_order + response.data_len;
-//    for (int i = 0; i < cmd_sentence.data_len; i++)
-//        *p++ = cmd_sentence.data[i];
-//
-//    for (i = 7; i < len; i += 2) {
-//        int byte = read_hex_byte(buffer + i);
-//        if (byte < 0) {
-//            ERROR(device->base.context, "DeepSix reply packet data not valid hex");
-//            return DC_STATUS_IO;
-//        }
-//        *buf++ = byte;
-//        csum += byte;
-//    }
     unsigned char calculated_csum = calculate_sentence_checksum(&response);
 
     if (calculated_csum != response.csum) {
@@ -432,9 +393,9 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
     if (status != DC_STATUS_SUCCESS)
         return status;
 
-//    memset(dive_info_bytes + dive_info_len, 0, EXCURSION_HDR_SIZE - dive_info_len);
-//    if (memcmp(dive_info_bytes, device->fingerprint, sizeof (device->fingerprint)) == 0)
-//        return DC_STATUS_DONE;
+    memset(dive_info_bytes + dive_info_len, 0, EXCURSION_HDR_SIZE - dive_info_len);
+    if (memcmp(dive_info_bytes, device->fingerprint, sizeof (device->fingerprint)) == 0)
+        return DC_STATUS_DONE;
 
     //status = DC_STATUS_UNSUPPORTED;
     if (status != DC_STATUS_SUCCESS)
@@ -457,8 +418,8 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
     memset(header + header_len, 0, 256 - header_len);
 
      /* The header is the fingerprint. If we've already seen this header, we're done */
-//    if (memcmp(header, device->fingerprint, sizeof (device->fingerprint)) == 0)
-//        return DC_STATUS_DONE;
+    if (memcmp(header, device->fingerprint, sizeof (device->fingerprint)) == 0)
+        return DC_STATUS_DONE;
 
     char divehdr[25];
     sprintf(divehdr, "Dive #%2d header: ", nr);
@@ -506,7 +467,7 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     progress.current = 0;
     device_event_emit(abstract, DC_EVENT_PROGRESS, &progress);
 
-    for (i = 1; i <= dive_number; i++) {
+    for (i = dive_number; i > 0; i--) {
         if (device_is_cancelled(abstract)) {
             dc_status_set_error(&status, DC_STATUS_CANCELLED);
             break;
