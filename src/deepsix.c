@@ -490,12 +490,14 @@ deepsix_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void
     unsigned short i;
 
     unsigned short dive_number;
-    get_last_dive_index(device, &dive_number);
+    status = get_last_dive_index(device, &dive_number);
+    if (status != DC_STATUS_SUCCESS)
+    	return status;
     char serial_number[12];
-    get_serial_number(device, serial_number);
+    status = get_serial_number(device, serial_number);
 
     if (status != DC_STATUS_SUCCESS)
-        return status;
+    	return status;
 
     if (!dive_number)
         return DC_STATUS_SUCCESS;
