@@ -66,7 +66,6 @@
 #include "garmin.h"
 #include "deepblu.h"
 #include "oceans_s1.h"
-#include "deepsix.h"
 
 #include "device-private.h"
 #include "context-private.h"
