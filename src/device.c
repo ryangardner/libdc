@@ -230,11 +230,10 @@ dc_device_open (dc_device_t **out, dc_context_t *context, dc_descriptor_t *descr
 	case DC_FAMILY_SPORASUB_SP2:
 		rc = sporasub_sp2_device_open (&device, context, iostream);
 		break;
-    case DC_FAMILY_DEEPSIX:
-        rc = deepsix_excursion_device_open(&device, context, iostream);
-        break;
-	default:
-		return DC_STATUS_INVALIDARGS;
+	case DC_FAMILY_DEEPSIX:
+		rc = deepsix_excursion_device_open(&device, context, iostream);
+		break;
+
 
 	// Not merged upstream yet
 	case DC_FAMILY_GARMIN:
@@ -246,9 +245,8 @@ dc_device_open (dc_device_t **out, dc_context_t *context, dc_descriptor_t *descr
 	case DC_FAMILY_OCEANS_S1:
 		rc = oceans_s1_device_open(&device, context, iostream);
 		break;
-    case DC_FAMILY_DEEP6:
-        rc = deep6_device_open (&device, context, iostream);
-        break;
+	default:
+		return DC_STATUS_INVALIDARGS;
 	}
 
 	*out = device;
