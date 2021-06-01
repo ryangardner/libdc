@@ -62,12 +62,12 @@ static int dc_filter_divesystem (dc_transport_t transport, const void *userdata,
 static int dc_filter_oceanic (dc_transport_t transport, const void *userdata, void *params);
 static int dc_filter_mclean (dc_transport_t transport, const void *userdata, void *params);
 static int dc_filter_atomic (dc_transport_t transport, const void *userdata, void *params);
+static int dc_filter_deepsix (dc_transport_t transport, const void *userdata, void *params);
 
 // Not merged upstream yet
 static int dc_filter_garmin (dc_transport_t transport, const void *userdata, void *params);
 static int dc_filter_deepblu (dc_transport_t transport, const void *userdata, void *params);
 static int dc_filter_oceans(dc_transport_t transport, const void *userdata, void *params);
-static int dc_filter_deep6 (dc_transport_t transport, const void *userdata, void *params);
 
 static dc_status_t dc_descriptor_iterator_next (dc_iterator_t *iterator, void *item);
 
@@ -271,6 +271,7 @@ static const dc_descriptor_t g_descriptors[] = {
 	{"Oceanic",  "Veo 4.0",             DC_FAMILY_OCEANIC_ATOM2, 0x4654, DC_TRANSPORT_SERIAL | DC_TRANSPORT_BLE, dc_filter_oceanic},
 	{"Sherwood", "Wisdom 4",            DC_FAMILY_OCEANIC_ATOM2, 0x4655, DC_TRANSPORT_SERIAL | DC_TRANSPORT_BLE, dc_filter_oceanic},
 	{"Oceanic",  "Pro Plus 4",          DC_FAMILY_OCEANIC_ATOM2, 0x4656, DC_TRANSPORT_SERIAL | DC_TRANSPORT_BLE, dc_filter_oceanic},
+	{"Sherwood", "Amphos 2.0",          DC_FAMILY_OCEANIC_ATOM2, 0x4657, DC_TRANSPORT_SERIAL, NULL},
 	{"Sherwood", "Beacon",              DC_FAMILY_OCEANIC_ATOM2, 0x4742, DC_TRANSPORT_SERIAL | DC_TRANSPORT_BLE, dc_filter_oceanic},
 	{"Aqualung", "i470TC",              DC_FAMILY_OCEANIC_ATOM2, 0x4743, DC_TRANSPORT_SERIAL | DC_TRANSPORT_BLE, dc_filter_oceanic},
 	/* Mares Nemo */
@@ -425,6 +426,8 @@ static const dc_descriptor_t g_descriptors[] = {
 	{"Liquivision", "Kaon", DC_FAMILY_LIQUIVISION_LYNX, 3, DC_TRANSPORT_SERIAL, NULL},
 	/* Sporasub */
 	{"Sporasub", "SP2", DC_FAMILY_SPORASUB_SP2, 0, DC_TRANSPORT_SERIAL, NULL},
+	/* DeepSix */
+	{"Deep Six", "Excursion", DC_FAMILY_DEEPSIX, 0, DC_TRANSPORT_BLE, dc_filter_deepsix },
 
 	// Not merged upstream yet
 	/* Garmin -- model numbers as defined in FIT format; USB product id is (0x4000 | model) */
@@ -435,8 +438,6 @@ static const dc_descriptor_t g_descriptors[] = {
 	{"Deepblu", "Cosmiq+", DC_FAMILY_DEEPBLU, 0, DC_TRANSPORT_BLE, dc_filter_deepblu},
 	/* Oceans S1 */
 	{ "Oceans", "S1", DC_FAMILY_OCEANS_S1, 0, DC_TRANSPORT_BLE, dc_filter_oceans },
-	/* Deep6 */
-    { "Deep6", "Excursion", DC_FAMILY_DEEP6, 0, DC_TRANSPORT_BLE, dc_filter_deep6 },
 };
 
 static int
@@ -775,7 +776,8 @@ static int dc_filter_oceans(dc_transport_t transport, const void* userdata, void
 	return 1;
 }
 
-static int dc_filter_deep6 (dc_transport_t transport, const void *userdata, void *params)
+
+static int dc_filter_deepsix (dc_transport_t transport, const void *userdata, void *params)
 {
     static const char * const bluetooth[] = {
             "EXCURSION",
@@ -787,6 +789,7 @@ static int dc_filter_deep6 (dc_transport_t transport, const void *userdata, void
 
     return 1;
 }
+
 
 dc_status_t
 dc_descriptor_iterator (dc_iterator_t **out)
